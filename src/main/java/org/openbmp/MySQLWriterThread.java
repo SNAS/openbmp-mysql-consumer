@@ -26,8 +26,8 @@ import org.apache.logging.log4j.Logger;
  *      the FIFO queue.
  */
 public class MySQLWriterThread implements  Runnable {
-    private final Integer MAX_BULK_STATEMENTS = 2500;           // Maximum number of bulk values/multi-statements to allow
-    private final Integer MAX_BULK_WAIT_MS = 100 ;              // Maximum milliseconds to wait for bulk messages
+    private final Integer MAX_BULK_STATEMENTS = 5000;           // Maximum number of bulk values/multi-statements to allow
+    private final Integer MAX_BULK_WAIT_MS = 100;               // Maximum milliseconds to wait for bulk messages
 
     private static final Logger logger = LogManager.getFormatterLogger(MySQLWriterThread.class.getName());
 

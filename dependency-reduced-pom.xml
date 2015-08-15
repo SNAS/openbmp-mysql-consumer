@@ -4,7 +4,7 @@
   <groupId>org.openbmp</groupId>
   <artifactId>openbmp-mysql-consumer</artifactId>
   <name>openbmp-mysql-consumer</name>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1.0-SNAPSHOT</version>
   <url>http://maven.apache.org</url>
   <build>
     <plugins>
@@ -19,6 +19,14 @@
               <mainClass>org.openbmp.MySQLConsumerApp</mainClass>
             </manifest>
           </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.3</version>
+        <configuration>
+          <source>1.7</source>
+          <target>1.7</target>
         </configuration>
       </plugin>
       <plugin>
