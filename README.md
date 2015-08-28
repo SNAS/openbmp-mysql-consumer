@@ -47,10 +47,49 @@ The above will create a JAR file under **target/**.  The JAR file is the complet
 
 Running
 -------
-You can unpack the JAR file if you want to modify the logging config.  Otherwise,  you can run as follows:
-
+Make sure to define the memory as below, otherwise Java likes to use more than is needed.
     
-     java -jar target/openbmp-mysql-consumer-0.1.0-SNAPSHOT.jar -dh db.openbmp.org -dn openBMPdev -du openbmp -dp openbmpNow -zk bmp-dev.openbmp.org
+    nohup java -Xmx512M -Xms512M -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+DisableExplicitGC \
+        -jar openbmp-mysql-consumer-0.1.0-082815.jar  -dh db.openbmp.org \
+        -dn openBMP -du openbmp -dp openbmpNow -zk localhost > mysql-consumer.log &     
+
+### Debug/Logging Changes
+You can define your own **log4j2.yml** (yml or any format you prefer) by suppling the ```-Dlog4j.configurationFile=<filename>``` option to java when running the JAR.   
+
+#### Example log4j2.yml 
+The below is an example log4j2 configuration for debug logging to a rolling file.
+
+```
+Configuration:
+  status: warn
+
+  Appenders:
+    Console:
+      name: Console
+      target: SYSTEM_OUT
+      PatternLayout:
+        Pattern: "%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n"
+
+    RollingFile:
+      name: file
+      fileName: "openbmp-mysql.log"
+      filePattern: "$${date:yyyy-MM}/app-%d{MM-dd-yyyy}-%i.log.gz"
+      PatternLayout:
+        Pattern: "%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n"
+      Policies:
+        SizeBasedTriggeringPolicy:
+          size: "75 MB"
+      DefaultRolloverStrategy:
+        max: 30
+
+  Loggers:
+    Root:
+      level: debug
+      AppenderRef:
+        ref: file
+
+```
+
 
 
 TODO

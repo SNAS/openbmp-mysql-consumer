@@ -8,6 +8,18 @@ Configuration:
       PatternLayout:
         Pattern: "%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n"
 
+    RollingFile:
+      name: file
+      fileName: "openbmp-mysql.log"
+      filePattern: "$${date:yyyy-MM}/app-%d{MM-dd-yyyy}-%i.log.gz"
+      PatternLayout:
+        Pattern: "%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n"
+      Policies:
+        SizeBasedTriggeringPolicy:
+          size: "75 MB"
+      DefaultRolloverStrategy:
+        max: 30
+
   Loggers:
     Root:
       level: info

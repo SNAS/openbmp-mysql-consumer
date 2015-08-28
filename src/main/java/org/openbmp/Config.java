@@ -8,6 +8,7 @@
  */
 package org.openbmp;
 
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.commons.cli.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -32,11 +33,13 @@ public class Config {
     private String db_user = "openbmp";
     private String db_pw = "openbmp";
     private String db_name = "openBMP";
+    private Boolean offsetLargest = Boolean.FALSE;
 
     public Config() {
         options.addOption("zk", "zookeeper", true, "Zookeeper hostanme:port (default is localhost:2181)");
         options.addOption("g", "group.id", true, "Kafka group ID (default is openbmp-mysql-consumer)");
         options.addOption("c", "client.id", true, "Kafka client ID (default uses group.id");
+        options.addOption("ol", "offset_largest", false, "Set offset to largest when offset is not known");
         options.addOption("e", "heartbeat_age", true, "Max age in minutes for collector heartbeats (default is 1440/4 hours)");
         options.addOption("dh", "db_host", true, "Database host (default is localhost:3306)");
         options.addOption("du", "db_user", true, "Database username (default is openbmp)");
@@ -67,6 +70,9 @@ public class Config {
 
             if (cmd.hasOption("zk"))
                 zookeeperAddress = cmd.getOptionValue("zk");
+
+            if (cmd.hasOption("ol"))
+                offsetLargest = Boolean.TRUE;
 
             if (cmd.hasOption("g"))
                 groupId = cmd.getOptionValue("g");
@@ -132,6 +138,8 @@ public class Config {
     String getDbPw() { return db_pw; }
 
     String getDbName() { return db_name; }
+
+    Boolean getOffsetLargest() { return offsetLargest; }
 
     Integer getHeartbeatInterval() { return heartbeat_age; }
 }

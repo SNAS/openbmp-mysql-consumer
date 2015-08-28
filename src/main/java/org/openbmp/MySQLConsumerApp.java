@@ -54,7 +54,8 @@ public class MySQLConsumerApp
         while (reconnect) {
             try {
                 consumer = kafka.consumer.Consumer.createJavaConsumerConnector(
-                        createConsumerConfig(cfg.getZookeeperAddress(), cfg.getClientId(), cfg.getGroupId()));
+                        createConsumerConfig(cfg.getZookeeperAddress(), cfg.getClientId(), cfg.getGroupId(),
+                                             cfg.getOffsetLargest()));
 
                 reconnect = false;
                 logger.debug("Connected to kafka/zookeeper: %s", cfg.getZookeeperAddress());
@@ -129,7 +130,8 @@ public class MySQLConsumerApp
         }
     }
 
-    private static ConsumerConfig createConsumerConfig(String zk_addr, String clientId, String groupId) {
+    private static ConsumerConfig createConsumerConfig(String zk_addr, String clientId, String groupId,
+                                                       Boolean offsetLargest) {
         Properties props = new Properties();
         props.put("zookeeper.connect", zk_addr);
         props.put("group.id", groupId);
@@ -137,7 +139,14 @@ public class MySQLConsumerApp
         props.put("zookeeper.session.timeout.ms", "500");
         props.put("zookeeper.sync.time.ms", "200");
         props.put("auto.commit.interval.ms", "1000");
-        //props.put("auto.offset.reset", "smallest");
+
+        if (offsetLargest == Boolean.FALSE) {
+            logger.info("Using smallest for Kafka offset reset");
+            props.put("auto.offset.reset", "smallest");
+        } else {
+            logger.info("Using largest for Kafka offset reset");
+            props.put("auto.offset.reset", "largest");
+        }
 
         return new ConsumerConfig(props);
     }
