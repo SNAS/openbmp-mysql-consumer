@@ -232,7 +232,7 @@ def walkWhois(db, asnList):
     asnList_processed = 0
 
     # Max number of requests before requiring a delay
-    MAX_REQUESTS_PER_INTERVAL = 200
+    MAX_REQUESTS_PER_INTERVAL = 100
 
     requests = 0
 
@@ -273,7 +273,7 @@ def walkWhois(db, asnList):
         # delay between queries
         if (requests >= MAX_REQUESTS_PER_INTERVAL):
             print "%s: Processed %d of %d" % (datetime.utcnow(), asnList_processed, asnList_size)
-            sleep(5)
+            sleep(15)
             requests = 0
 
 
