@@ -4,7 +4,7 @@
   <groupId>org.openbmp</groupId>
   <artifactId>openbmp-mysql-consumer</artifactId>
   <name>openbmp-mysql-consumer</name>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0-${build.number}</version>
   <url>http://maven.apache.org</url>
   <build>
     <plugins>
@@ -61,6 +61,7 @@
     </dependency>
   </dependencies>
   <properties>
+    <build.number>SNAPSHOT</build.number>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 </project>

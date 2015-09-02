@@ -95,7 +95,7 @@ TBL_GEN_WHOIS_ASN_SCHEMA = (
 QUERY_AS_LIST = (
         "select distinct a.asn"
         "   from gen_asn_stats a left join gen_whois_asn w on (a.asn = w.asn)"
-        #"   where isnull(as_name)"
+        "   where isnull(as_name)"
         )
 
 def getASNList(db):

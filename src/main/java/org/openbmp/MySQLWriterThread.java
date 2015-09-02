@@ -153,6 +153,7 @@ public class MySQLWriterThread implements  Runnable {
 
                             prev_time = System.currentTimeMillis();
                         } catch (SQLException e) {
+                            logger.warn("SQL exception: " + e.getMessage());
                             e.printStackTrace();
                         }
 
