@@ -36,6 +36,9 @@ Building Source
 ### Dependancies
 You will need Java 1.7 or greater as well as maven 3.x or greater.
 
+#### For example on Ubuntu 14.04:
+    apt-get install git openjdk-7-jdk git openjdk-7-jre-headless maven
+
 #### Build
 You can build from source using maven as below:
 
@@ -50,7 +53,7 @@ Running
 Make sure to define the memory as below, otherwise Java likes to use more than is needed.
     
     nohup java -Xmx512M -Xms512M -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+DisableExplicitGC \
-        -jar openbmp-mysql-consumer-0.1.0-082815.jar  -dh db.openbmp.org \
+        -jar openbmp-mysql-consumer-0.1.0-SNAPSHOT.jar  -dh db.openbmp.org \
         -dn openBMP -du openbmp -dp openbmpNow -zk localhost > mysql-consumer.log &     
 
 ### Debug/Logging Changes
