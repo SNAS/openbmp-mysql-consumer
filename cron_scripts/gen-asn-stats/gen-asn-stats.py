@@ -423,6 +423,10 @@ def UpdateDB(db):
     isOrigin = 0
     totalRecords = len(RECORD_DICT)
 
+    if (totalRecords == 0):
+        print "No records, skipping update"
+        return
+
     for idx,asn in enumerate(RECORD_DICT):
         if (RECORD_DICT[asn]['transit_v4_prefixes'] > 0 or RECORD_DICT[asn]['transit_v6_prefixes'] > 0):
             isTransit = 1

@@ -121,10 +121,9 @@ public class MySQLWriterThread implements  Runnable {
                         logger.debug("Max reached, doing insert: wait_ms=%d bulk_count=%d", cur_time - prev_time, bulk_count);
                         bulk_count = 0;
 
+                        StringBuilder query = new StringBuilder();
                         try {
                             Statement stmt = con.createStatement();
-
-                            StringBuilder query = new StringBuilder();
 
                             // Loop through queries and add them as multi-statements
                             for (Map.Entry<String, String> entry : bulk_query.entrySet()) {
@@ -152,8 +151,10 @@ public class MySQLWriterThread implements  Runnable {
                             }
 
                             prev_time = System.currentTimeMillis();
+
                         } catch (SQLException e) {
                             logger.warn("SQL exception: " + e.getMessage());
+                            logger.warn("query: " + query.toString());
                             e.printStackTrace();
                         }
 

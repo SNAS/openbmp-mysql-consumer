@@ -30,7 +30,7 @@ public class Router extends Base {
      */
     public Router(String data) {
         super();
-        headerNames = new String [] { "action", "seq", "name", "hash", "ip_address", "descr", "term_code",
+        headerNames = new String [] { "action", "seq", "name", "hash", "ip_address", "description", "term_code",
                                       "term_reason", "init_data", "term_data", "timestamp" };
 
         parse(data);
@@ -71,7 +71,7 @@ public class Router extends Base {
      */
     public String[] genInsertStatement() {
         String [] stmt = { " INSERT INTO routers (hash_id,name,ip_address,timestamp,isConnected,term_reason_code," +
-                                  "term_reason_text,term_data,init_data) VALUES ",
+                                  "term_reason_text,term_data,init_data,description) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp),isConnected=values(isConnected)," +
                                    "name=if(isConnected = 1, values(name), name)," +
@@ -102,7 +102,8 @@ public class Router extends Base {
             sb.append(rowMap.get(i).get("term_code") + ",");
             sb.append("'" + rowMap.get(i).get("term_reason") + "',");
             sb.append("'" + rowMap.get(i).get("term_data") + "',");
-            sb.append("'" + rowMap.get(i).get("init_data") + "'");
+            sb.append("'" + rowMap.get(i).get("init_data") + "',");
+            sb.append("'" + rowMap.get(i).get("description") + "'");
             sb.append(')');
         }
 
