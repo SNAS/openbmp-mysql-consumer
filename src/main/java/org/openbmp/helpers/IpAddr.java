@@ -117,6 +117,38 @@ public class IpAddr {
     }
 
     /**
+     * Convert IP to mysql  binary string form for insert/update
+     *
+     * @param ip_address        IP address in printed form (IPv4 or IPv6)
+     *
+     * @return bit string value that can be used to insert/update a varbinary column in MySQL
+     */
+    public static String getIpBits(String ip_address) {
+        StringBuilder bit_ip = new StringBuilder();
+
+        InetAddress ipaddr = null;
+        try {
+            ipaddr = InetAddress.getByName(ip_address);
+            byte [] addr = ipaddr.getAddress();
+
+            for (int i = 0; i < addr.length; i++) {
+                for (int i_bit = 7; i_bit >= 0; i_bit--) {
+                    if ((addr[i] & (1 << i_bit)) != 0) {
+                        bit_ip.append('1');
+                    } else {
+                        bit_ip.append('0');
+                    }
+                }
+            }
+
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
+        return bit_ip.toString();
+    }
+
+    /**
      * Get IP broadcast in HEX form for mysql varbinary insert/update
      *
      * @param ip_address        IP address in printed form (IPv4 or IPv6)

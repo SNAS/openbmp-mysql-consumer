@@ -95,7 +95,8 @@ public class UnicastPrefix extends Base {
      */
     public String[] genInsertStatement() {
         String [] stmt = { " INSERT IGNORE INTO rib (hash_id,peer_hash_id,path_attr_hash_id,isIPv4," +
-                           "origin_as,prefix,prefix_len,prefix_bin,prefix_bcast_bin,timestamp,isWithdrawn) VALUES ",
+                           "origin_as,prefix,prefix_len,prefix_bin,prefix_bcast_bin,prefix_bits,timestamp," +
+                           "isWithdrawn) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp)," +
                                "path_attr_hash_id=if(values(isWithdrawn) = 1, path_attr_hash_id, values(path_attr_hash_id))," +
@@ -126,6 +127,7 @@ public class UnicastPrefix extends Base {
 
             sb.append("X'" + IpAddr.getIpHex((String) rowMap.get(i).get("prefix")) + "',");
             sb.append("X'" + IpAddr.getIpBroadcastHex((String) rowMap.get(i).get("prefix"), (Integer) rowMap.get(i).get("prefix_len")) + "',");
+            sb.append("'" + IpAddr.getIpBits((String) rowMap.get(i).get("prefix")).substring(0,(Integer)rowMap.get(i).get("prefix_len")) + "',");
 
             sb.append("'" + rowMap.get(i).get("timestamp") + "',");
             sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("del") ? 1 : 0) + "");

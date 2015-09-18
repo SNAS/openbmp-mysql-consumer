@@ -3,6 +3,7 @@ package org.openbmp;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.openbmp.helpers.IpAddr;
 
 /**
  * Unit test for simple MySQLConsumerApp.
@@ -17,7 +18,7 @@ public class MySQLConsumerAppTest
      */
     public MySQLConsumerAppTest(String testName)
     {
-        super( testName );
+        super(testName);
     }
 
     /**
@@ -28,11 +29,10 @@ public class MySQLConsumerAppTest
         return new TestSuite( MySQLConsumerAppTest.class );
     }
 
-    /**
-     * Rigourous Test :-)
-     */
-    public void testApp()
+    public void testIpToBits()
     {
-        assertTrue( true );
+        System.out.println("Testing IP 10.1.1.248 = " + IpAddr.getIpBits("10.1.1.248"));
+        assertTrue(IpAddr.getIpBits("10.1.1.248").equals("00001010000000010000000111111000"));
     }
+
 }
