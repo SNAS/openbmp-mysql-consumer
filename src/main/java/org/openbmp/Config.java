@@ -29,6 +29,7 @@ public class Config {
     private String groupId = "openbmp-mysql-consumer";
     private String clientId = null;
     private Integer heartbeat_age = 1440;
+    private Integer stats_interval = 60;
     private String db_host = "localhost:3306";
     private String db_user = "openbmp";
     private String db_pw = "openbmp";
@@ -41,6 +42,7 @@ public class Config {
         options.addOption("c", "client.id", true, "Kafka client ID (default uses group.id");
         options.addOption("ol", "offset_largest", false, "Set offset to largest when offset is not known");
         options.addOption("e", "heartbeat_age", true, "Max age in minutes for collector heartbeats (default is 1440/4 hours)");
+        options.addOption("s", "stats_interval", true, "Stats interval in seconds (default 60 seconds, 0 disables");
         options.addOption("dh", "db_host", true, "Database host (default is localhost:3306)");
         options.addOption("du", "db_user", true, "Database username (default is openbmp)");
         options.addOption("dp", "db_pw", true, "Database password (default is openbmp)");
@@ -79,6 +81,9 @@ public class Config {
 
             if (cmd.hasOption("e"))
                 heartbeat_age = Integer.valueOf(cmd.getOptionValue("e"));
+
+            if (cmd.hasOption("s"))
+                stats_interval = Integer.valueOf(cmd.getOptionValue("s"));
 
             if (cmd.hasOption("c"))
                 clientId = cmd.getOptionValue("c");
@@ -142,4 +147,6 @@ public class Config {
     Boolean getOffsetLargest() { return offsetLargest; }
 
     Integer getHeartbeatInterval() { return heartbeat_age; }
+
+    Integer getStatsInterval() { return stats_interval; }
 }

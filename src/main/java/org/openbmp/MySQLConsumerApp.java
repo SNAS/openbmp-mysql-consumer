@@ -15,10 +15,7 @@ import kafka.javaapi.consumer.ConsumerConnector;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -41,11 +38,14 @@ public class MySQLConsumerApp
     private ConsumerConnector consumer;
     private ExecutorService executor;
     private final Config cfg;
+    private static List<MySQLConsumer> _threads;
 
     public MySQLConsumerApp(Config cfg) {
 
         this.cfg = cfg;
         consumer = null;
+        _threads = new ArrayList<MySQLConsumer>();
+
         Boolean reconnect = true;
 
         logger.debug("Connecting to kafka/zookeeper: %s", cfg.getZookeeperAddress());
@@ -124,7 +124,9 @@ public class MySQLConsumerApp
             List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic.getKey());
 
             for (final KafkaStream stream : streams) {
-                executor.submit(new MySQLConsumer(stream, threadNumber, cfg));
+                _threads.add(threadNumber,  new MySQLConsumer(stream, threadNumber, cfg, topic.getKey()));
+
+                executor.submit(_threads.get(threadNumber));
                 threadNumber++;
             }
         }
@@ -139,6 +141,7 @@ public class MySQLConsumerApp
         props.put("zookeeper.session.timeout.ms", "500");
         props.put("zookeeper.sync.time.ms", "200");
         props.put("auto.commit.interval.ms", "1000");
+        //props.put("consumer.timeout.ms", "100");            // Non-blocking for stream.it.hasNext()
 
         if (offsetLargest == Boolean.FALSE) {
             logger.info("Using smallest for Kafka offset reset");
@@ -175,8 +178,24 @@ public class MySQLConsumerApp
             mysqlApp.run();
 
             try {
-                while (true)
-                    Thread.sleep(15000);
+                while (true) {
+                    if (cfg.getStatsInterval() > 0) {
+                        Thread.sleep(cfg.getStatsInterval() * 1000);
+
+                        /*
+                         * Print stats for each thread
+                         */
+                        for (int i = 0; i < _threads.size(); i++ ) {
+                            logger.info("STAT: thread %d read: %10d queue: %10d topics: %s",
+                                        i, _threads.get(i).getMessageCount(),
+                                        _threads.get(i).getQueueSize(),
+                                        _threads.get(i).getTopics());
+                        }
+
+                    } else {
+                        Thread.sleep(15000);
+                    }
+                }
             } catch (InterruptedException ie) {
 
             }

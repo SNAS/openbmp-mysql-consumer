@@ -14,8 +14,7 @@ import kafka.message.MessageAndMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openbmp.handler.*;
-
-
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -29,9 +28,11 @@ public class MySQLConsumer implements Runnable {
     private final Integer FIFO_QUEUE_SIZE = 10000;  // Size of the FIFO queue
 
     private KafkaStream m_stream;
+    private String m_topics;
     private int m_threadNumber;
     private ExecutorService executor;
     private MySQLWriterThread writerThread;
+    private BigInteger messageCount;
 
     /*
      * FIFO queue for SQL messages to be written/inserted
@@ -53,9 +54,11 @@ public class MySQLConsumer implements Runnable {
      * @param threadNumber         this tread nubmer, used for logging
      * @param cfg                  configuration
      */
-    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg) {
+    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics) {
         m_threadNumber = threadNumber;
         m_stream = stream;
+        m_topics = topics;
+        messageCount = BigInteger.valueOf(0);
 
         /*
          * Start MySQL Writer thread - only one thread is needed
@@ -105,7 +108,9 @@ public class MySQLConsumer implements Runnable {
         Map<String, String> query;
         long prev_time = System.currentTimeMillis();
 
+
         while (it.hasNext()) {
+
             // Get the message
             MessageAndMetadata<byte[], byte[]> cur = it.next();
 
@@ -124,7 +129,7 @@ public class MySQLConsumer implements Runnable {
              * Parse the headers
              */
             String headers = msg.substring(0, data_pos);
-            String data = msg.substring(data_pos+2);
+            String data = msg.substring(data_pos + 2);
 
             Base obj = null;
 
@@ -136,21 +141,15 @@ public class MySQLConsumer implements Runnable {
                 logger.debug("Parsing collector message");
 
                 obj = new Collector(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.router")) {
+            } else if (topic.equals("openbmp.parsed.router")) {
                 logger.debug("Parsing router message");
 
                 obj = new Router(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.peer")) {
+            } else if (topic.equals("openbmp.parsed.peer")) {
                 logger.debug("Parsing peer message");
 
                 obj = new Peer(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.base_attribute")) {
+            } else if (topic.equals("openbmp.parsed.base_attribute")) {
                 logger.debug("Parsing base_attribute message");
 
                 BaseAttribute attr_obj = new BaseAttribute(data);
@@ -160,8 +159,8 @@ public class MySQLConsumer implements Runnable {
                 String values = attr_obj.genAsPathAnalysisValuesStatement();
 
                 if (values.length() > 0) {
-                    Map<String,String> analysis_query = new HashMap<String, String>();
-                    String [] ins = attr_obj.genAsPathAnalysisStatement();
+                    Map<String, String> analysis_query = new HashMap<String, String>();
+                    String[] ins = attr_obj.genAsPathAnalysisStatement();
                     analysis_query.put("prefix", ins[0]);
                     analysis_query.put("suffix", ins[1]);
 
@@ -176,39 +175,27 @@ public class MySQLConsumer implements Runnable {
                         e.printStackTrace();
                     }
                 }
-            }
-
-            else if (topic.equals("openbmp.parsed.unicast_prefix")) {
+            } else if (topic.equals("openbmp.parsed.unicast_prefix")) {
                 logger.debug("Parsing unicast_prefix message");
 
                 obj = new UnicastPrefix(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.bmp_stat")) {
+            } else if (topic.equals("openbmp.parsed.bmp_stat")) {
                 logger.debug("Parsing bmp_stat message");
 
                 obj = new BmpStat(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.ls_node")) {
+            } else if (topic.equals("openbmp.parsed.ls_node")) {
                 logger.debug("Parsing ls_node message");
 
                 obj = new LsNode(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.ls_link")) {
+            } else if (topic.equals("openbmp.parsed.ls_link")) {
                 logger.debug("Parsing ls_link message");
 
                 obj = new LsLink(data);
-            }
-
-            else if (topic.equals("openbmp.parsed.ls_prefix")) {
+            } else if (topic.equals("openbmp.parsed.ls_prefix")) {
                 logger.debug("Parsing ls_prefix message");
 
                 obj = new LsPrefix(data);
-            }
-
-            else {
+            } else {
                 logger.debug("Topic %s not implemented, ignoring", topic);
                 return;
             }
@@ -217,6 +204,8 @@ public class MySQLConsumer implements Runnable {
              * Add query to writer queue
              */
             if (obj != null) {
+
+                messageCount = messageCount.add(BigInteger.ONE);
 
                 String values = obj.genValuesStatement();
 
@@ -246,4 +235,9 @@ public class MySQLConsumer implements Runnable {
         shutdown();
         logger.debug("MySQL consumer thread %d finished", m_threadNumber);
     }
+
+    public synchronized BigInteger getMessageCount() { return messageCount; }
+    public synchronized Integer getQueueSize() { return writerQueue.size(); }
+    public synchronized String getTopics() { return m_topics; }
+
 }
