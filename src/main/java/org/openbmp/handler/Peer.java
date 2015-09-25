@@ -123,7 +123,7 @@ public class Peer extends Base {
             sb.append("'" + rowMap.get(i).get("remote_bgp_id") + "',");
             sb.append(rowMap.get(i).get("remote_asn") + ",");
 
-            sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("down") ? 0 : 1) + ",");
+            sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("up") ? 1 : 0) + ",");
 
             sb.append(rowMap.get(i).get("isL3VPN") + ",");
             sb.append("'" + rowMap.get(i).get("timestamp") + "',");
@@ -148,4 +148,30 @@ public class Peer extends Base {
         return sb.toString();
     }
 
+
+    /**
+     * Generate MySQL RIB update statement to withdraw all rib entries
+     *
+     * Upon peer up or down, withdraw all RIB entries.  When the PEER is up all
+     *   RIB entries will get updated.  Depending on how long the peer was down, some
+     *   entries may not be present anymore, thus they are withdrawn.
+     *
+     * @return Multi statement update is returned, such as update ...; update ...;
+     */
+    public String genRibPeerUpdate() {
+
+        StringBuilder sb = new StringBuilder();
+
+        for (int i=0; i < rowMap.size(); i++) {
+
+            if (i > 0)
+                sb.append(';');
+
+            sb.append("UPDATE rib SET isWithdrawn = True WHERE peer_hash_id = '");
+            sb.append(rowMap.get(i).get("hash"));
+            sb.append("' AND isWithdrawn = False");
+        }
+
+        return sb.toString();
+    }
 }

@@ -148,7 +148,22 @@ public class MySQLConsumer implements Runnable {
             } else if (topic.equals("openbmp.parsed.peer")) {
                 logger.debug("Parsing peer message");
 
-                obj = new Peer(data);
+                Peer peer = new Peer(data);
+                obj = peer;
+
+                // Add the withdrawn
+                Map<String, String> rib_update = new HashMap<String,String>();
+                rib_update.put("query", peer.genRibPeerUpdate());
+
+                // block if space is not available
+                try {
+                    logger.debug("Added peer rib update message to queue: size = %d", writerQueue.size());
+                    writerQueue.put(rib_update);
+
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
             } else if (topic.equals("openbmp.parsed.base_attribute")) {
                 logger.debug("Parsing base_attribute message");
 
@@ -204,7 +219,6 @@ public class MySQLConsumer implements Runnable {
              * Add query to writer queue
              */
             if (obj != null) {
-
                 messageCount = messageCount.add(BigInteger.ONE);
 
                 String values = obj.genValuesStatement();

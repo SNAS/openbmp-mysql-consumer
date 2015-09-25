@@ -58,7 +58,7 @@ public class MySQLWriterThread implements  Runnable {
         try {
             con = DriverManager.getConnection(
                     "jdbc:mariadb://" + cfg.getDbHost() + "/" + cfg.getDbName() +
-                            "?tcpKeepAlive=1&connectTimeout=30000&socketTimeout=15000&useCompression=true&autoReconnect=true&allowMultiQueries=true",
+                            "?tcpKeepAlive=true&connectTimeout=30000&socketTimeout=15000&useCompression=true&autoReconnect=true&allowMultiQueries=true",
                     cfg.getDbUser(), cfg.getDbPw());
 
             logger.debug("Writer thread connected to mysql");
@@ -83,6 +83,36 @@ public class MySQLWriterThread implements  Runnable {
             con.close();
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Run MySQL update query
+     *
+     * @param query         Query string to run
+     * @param retries       Number of times to retry, zero means no retries
+     */
+    private void mysqlQueryUpdate(String query, int retries) {
+        // Loop the request if broken pipe
+        for (int i = 0; i <= retries; i++) {
+            try {
+                Statement stmt = con.createStatement();
+                logger.debug("SQL Query retry = %d: %s", i, query);
+                stmt.executeUpdate(query);
+                i = retries;
+                break;
+
+            } catch (SQLException e) {
+                logger.warn("SQL exception state: " + e.getSQLState());
+                logger.warn("SQL exception: " + e.getMessage());
+                logger.warn("query: " + query);
+                e.printStackTrace();
+
+                if (!e.getMessage().contains("Broken pipe")) {
+                    i = retries;
+                    break;
+                }
+            }
         }
     }
 
@@ -119,45 +149,35 @@ public class MySQLWriterThread implements  Runnable {
 
                     if (bulk_count > 0) {
                         logger.debug("Max reached, doing insert: wait_ms=%d bulk_count=%d", cur_time - prev_time, bulk_count);
-                        bulk_count = 0;
 
                         StringBuilder query = new StringBuilder();
-                        try {
-                            Statement stmt = con.createStatement();
+                        // Loop through queries and add them as multi-statements
+                        for (Map.Entry<String, String> entry : bulk_query.entrySet()) {
+                            String key = entry.getKey().toString();
 
-                            // Loop through queries and add them as multi-statements
-                            for (Map.Entry<String, String> entry : bulk_query.entrySet()) {
-                                String key = entry.getKey().toString();
+                            String value = entry.getValue();
 
-                                String value = entry.getValue();
+                            String[] ins = key.split("[|]");
 
-                                String[] ins = key.split("[|]");
+                            if (query.length() > 0)
+                                query.append(';');
 
-                                if (query.length() > 0)
-                                    query.append(';');
+                            query.append(ins[0]);
+                            query.append(' ');
+                            query.append(value);
+                            query.append(' ');
 
-                                query.append(ins[0]);
-                                query.append(' ');
-                                query.append(value);
-                                query.append(' ');
-
-                                if (ins.length > 1 && ins[1] != null && ins[1].length() > 0)
-                                    query.append(ins[1]);
-                            }
-
-                            if (query.length() > 0) {
-                                logger.debug("SQL: " + query.toString());
-                                stmt.executeUpdate(query.toString());
-                            }
-
-                            prev_time = System.currentTimeMillis();
-
-                        } catch (SQLException e) {
-                            logger.warn("SQL exception: " + e.getMessage());
-                            logger.warn("query: " + query.toString());
-                            e.printStackTrace();
+                            if (ins.length > 1 && ins[1] != null && ins[1].length() > 0)
+                                query.append(ins[1]);
                         }
 
+                        if (query.length() > 0) {
+                            mysqlQueryUpdate(query.toString(), 5);
+                        }
+
+                        prev_time = System.currentTimeMillis();
+
+                        bulk_count = 0;
                         bulk_query.clear();
                     }
                     else {
@@ -169,14 +189,20 @@ public class MySQLWriterThread implements  Runnable {
                 Map<String, String> cur_query = writerQueue.poll(MAX_BULK_WAIT_MS, TimeUnit.MILLISECONDS);
 
                 if (cur_query != null) {
-                    String key = cur_query.get("prefix") + "|" + cur_query.get("suffix");
-                    ++bulk_count;
+                    if (cur_query.containsKey("prefix")) {
+                        String key = cur_query.get("prefix") + "|" + cur_query.get("suffix");
+                        ++bulk_count;
 
-                    // merge the data to existing bulk map if already present
-                    if (bulk_query.containsKey(key)) {
-                        bulk_query.put(key, bulk_query.get(key).concat("," + cur_query.get("value")));
-                    } else {
-                        bulk_query.put(key, cur_query.get("value"));
+                        // merge the data to existing bulk map if already present
+                        if (bulk_query.containsKey(key)) {
+                            bulk_query.put(key, bulk_query.get(key).concat("," + cur_query.get("value")));
+                        } else {
+                            bulk_query.put(key, cur_query.get("value"));
+                        }
+                    }
+                    else if (cur_query.containsKey("query")) {  // Null prefix means run query now, not in bulk
+                        logger.debug("Non bulk query");
+                        mysqlQueryUpdate(cur_query.get("query"), 3);
                     }
                 }
             }
