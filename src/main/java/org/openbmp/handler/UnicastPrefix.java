@@ -99,6 +99,7 @@ public class UnicastPrefix extends Base {
                            "isWithdrawn) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp)," +
+                               "prefix_bits=values(prefix_bits)," +
                                "path_attr_hash_id=if(values(isWithdrawn) = 1, path_attr_hash_id, values(path_attr_hash_id))," +
                                "origin_as=if(values(isWithdrawn) = 1, origin_as, values(origin_as)),isWithdrawn=values(isWithdrawn) " };
         return stmt;
