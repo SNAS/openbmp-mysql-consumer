@@ -93,7 +93,7 @@ public class MySQLWriterThread implements  Runnable {
      * @param retries       Number of times to retry, zero means no retries
      */
     private void mysqlQueryUpdate(String query, int retries) {
-        // Loop the request if broken pipe
+        // Loop the request if broken pipe, connection timed out, or deadlock
         for (int i = 0; i <= retries; i++) {
             try {
                 Statement stmt = con.createStatement();
@@ -108,7 +108,8 @@ public class MySQLWriterThread implements  Runnable {
                 logger.debug("query: " + query);
                 //e.printStackTrace();
 
-                if (!e.getMessage().contains("Broken pipe")) {
+                if (!e.getMessage().contains("Broken pipe") || !e.getMessage().contains("Connection timed out") ||
+                        !e.getMessage().contains("Deadlock found when trying") ) {
                     i = retries;
                     break;
                 }
