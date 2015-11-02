@@ -105,8 +105,8 @@ public class MySQLWriterThread implements  Runnable {
             } catch (SQLException e) {
                 logger.warn("SQL exception state: " + e.getSQLState());
                 logger.warn("SQL exception: " + e.getMessage());
-                logger.warn("query: " + query);
-                e.printStackTrace();
+                logger.debug("query: " + query);
+                //e.printStackTrace();
 
                 if (!e.getMessage().contains("Broken pipe")) {
                     i = retries;
