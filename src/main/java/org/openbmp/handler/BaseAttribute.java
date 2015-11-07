@@ -223,4 +223,73 @@ public class BaseAttribute extends Base {
             sb.append("");
         return sb.toString();
     }
+
+    /**
+     * Generate MySQL insert/update statement, sans the values for community_analysis
+     *
+     * @return Two strings are returned
+     *      0 = Insert statement string up to VALUES keyword
+     *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
+     */
+    public String[] genCommunityAnalysisStatement() {
+        String [] stmt = {" INSERT INTO community_analysis (community,part1,part2,path_attr_hash_id, peer_hash_id)" +
+                " VALUES ",
+
+                " ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
+        return stmt;
+    }
+
+    /**
+     * Generate bulk values statement for SQL bulk insert for community_analysis
+     *
+     * @return String in the format of (col1, col2, ...)[,...]
+     */
+    public String genCommunityAnalysisValuesStatement() {
+        StringBuilder sb = new StringBuilder();
+
+        /*
+         * Iterate through the community list and extract part1 and part2,
+         * which are separated by colons
+         */
+        for (int i=0; i < rowMap.size(); i++) {
+            String communityString = ((String)rowMap.get(i).get("community_list")).trim();
+            String[] communityList = communityString.split(" ");
+
+            String path_attr_hash = (String) rowMap.get(i).get("hash");
+            String peer_hash = (String) rowMap.get(i).get("peer_hash");
+
+            for (int j = 0; j < communityList.length; j++) {
+                if (communityList[j].length() <= 0) {
+                    break;
+                }
+
+                Integer part1 = 0, part2 = 0;
+                try {
+                    String[] twoParts = communityList[j].split(":");
+                    part1 = Integer.valueOf(twoParts[0]);
+                    part2 = Integer.valueOf(twoParts[1]);
+                } catch (NumberFormatException e) {
+                    e.printStackTrace();
+                    break;
+                }
+
+                if (part1 > 0 && part2 > 0) {
+                    if (sb.length() > 0)
+                        sb.append(",");
+
+                    sb.append("('" + communityList[j] + "',"
+                            + part1 + ","
+                            + part2 + ",'"
+                            + path_attr_hash + "','"
+                            + peer_hash + "')"
+                    );
+                }
+            }
+        }
+
+        //System.out.println("AS insert: " + sb.toString());
+        if (sb.length() <= 0)
+            sb.append("");
+        return sb.toString();
+    }
 }
