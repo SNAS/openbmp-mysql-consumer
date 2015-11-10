@@ -263,7 +263,7 @@ public class BaseAttribute extends Base {
                     break;
                 }
 
-                Integer part1 = 0, part2 = 0;
+                Integer part1 = null, part2 = null;
                 try {
                     String[] twoParts = communityList[j].split(":");
                     part1 = Integer.valueOf(twoParts[0]);
@@ -273,7 +273,7 @@ public class BaseAttribute extends Base {
                     break;
                 }
 
-                if (part1 > 0 && part2 > 0) {
+                if (part1 != null && part2 != null) {
                     if (sb.length() > 0)
                         sb.append(",");
 
