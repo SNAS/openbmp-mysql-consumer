@@ -185,11 +185,28 @@ public class MySQLConsumer implements Runnable {
                     try {
                         logger.debug("Added as_path_analysis message to queue: size = %d", writerQueue.size());
                         writerQueue.put(analysis_query);
-
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
                 }
+
+                // add community_analysis
+                values = attr_obj.genCommunityAnalysisValuesStatement();
+                if (values.length() > 0) {
+                    Map<String, String> analysis_query = new HashMap<>();
+                    String[] ins = attr_obj.genCommunityAnalysisStatement();
+                    analysis_query.put("prefix", ins[0]);
+                    analysis_query.put("suffix", ins[1]);
+
+                    analysis_query.put("value", values);
+                    try {
+                        logger.debug("Added community_analysis message to queue: size = %d", writerQueue.size());
+                        writerQueue.put(analysis_query);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
             } else if (topic.equals("openbmp.parsed.unicast_prefix")) {
                 logger.debug("Parsing unicast_prefix message");
 
