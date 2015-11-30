@@ -108,7 +108,7 @@ public class MySQLWriterThread implements  Runnable {
                 logger.debug("query: " + query);
                 //e.printStackTrace();
 
-                if (!e.getMessage().contains("Broken pipe") || !e.getMessage().contains("Connection timed out") ||
+                if (!e.getMessage().contains("Broken pipe") && !e.getMessage().contains("Connection timed out") &&
                         !e.getMessage().contains("Deadlock found when trying") ) {
                     i = retries;
                     break;
