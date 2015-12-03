@@ -38,6 +38,7 @@ public abstract class Base {
         rowMap = new ArrayList<Map<String, Object>>();
     }
 
+    protected Headers headers;
 
     /**
      * Parse TSV rows of data from message
