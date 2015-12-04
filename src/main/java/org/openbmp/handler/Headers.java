@@ -21,6 +21,8 @@ public class Headers {
 
     private long records;
 
+    private String router_hash_id;
+
     /**
      * Handle the headers by parsing it and storing the data in memory.
      *
@@ -37,10 +39,34 @@ public class Headers {
      */
     private void parse(String data) {
         String headers[] = data.split("\n");
-        this.version = headers[0].split(":")[1].trim();
-        this.collector_hash_id = headers[1].split(":")[1].trim();
-        this.length = Long.valueOf(headers[2].split(":")[1].trim());
-        this.records = Long.valueOf(headers[3].split(":")[1].trim());
+        for(String header : headers){
+            
+            String value = header.split(":")[1];
+
+            switch(header.split(":")[0].trim()){
+                case "V":{
+                    this.version = value.trim();
+                    break;
+                }
+                case "C_HASH_ID":{
+                    this.collector_hash_id = value.trim();
+                    break;
+                }
+                case "L":{
+                    this.length = Long.valueOf(value.trim());
+                    break;
+                }
+                case "R":{
+                    this.records = Long.valueOf(value.trim());
+                    break;
+                }
+                case "R_HASH_ID":{
+                    this.router_hash_id = value.trim();
+                    break;
+                }
+            }
+            
+        }
     }
 
     public String getVersion() {
@@ -58,4 +84,8 @@ public class Headers {
     public long getRecords() {
         return records;
     }
+    public String getRouter_hash_id() {
+        return router_hash_id;
+    }
+
 }
