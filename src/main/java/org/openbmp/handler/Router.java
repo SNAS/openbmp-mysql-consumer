@@ -26,13 +26,15 @@ public class Router extends Base {
     /**
      * Handle the message by parsing it and storing the data in memory.
      *
+     * @param headers Generated Headers object from the headers in the message
      * @param data
      */
-    public Router(String data) {
+    public Router(Headers headers, String data) {
         super();
         headerNames = new String [] { "action", "seq", "name", "hash", "ip_address", "description", "term_code",
                                       "term_reason", "init_data", "term_data", "timestamp" };
 
+        this.headers = headers;
         parse(data);
     }
 
@@ -71,12 +73,13 @@ public class Router extends Base {
      */
     public String[] genInsertStatement() {
         String [] stmt = { " INSERT INTO routers (hash_id,name,ip_address,timestamp,isConnected,term_reason_code," +
-                                  "term_reason_text,term_data,init_data,description) VALUES ",
+                                  "term_reason_text,term_data,init_data,description,collector_hash_id) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp),isConnected=values(isConnected)," +
                                    "name=if(isConnected = 1, values(name), name)," +
                                    "description=values(description),init_data=values(init_data)," +
-                                   "term_reason_code=values(term_reason_code),term_reason_text=values(term_reason_text)" };
+                                   "term_reason_code=values(term_reason_code),term_reason_text=values(term_reason_text)," +
+                                   "collector_hash_id=values(collector_hash_id)" };
         return stmt;
     }
 
@@ -104,6 +107,7 @@ public class Router extends Base {
             sb.append("'" + rowMap.get(i).get("term_data") + "',");
             sb.append("'" + rowMap.get(i).get("init_data") + "',");
             sb.append("'" + rowMap.get(i).get("description") + "'");
+            sb.append("'" + headers.getCollector_hash_id() + "'");
             sb.append(')');
         }
 

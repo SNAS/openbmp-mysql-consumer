@@ -141,10 +141,12 @@ public class MySQLConsumer implements Runnable {
                 logger.debug("Parsing collector message");
 
                 obj = new Collector(data);
+
             } else if (topic.equals("openbmp.parsed.router")) {
                 logger.debug("Parsing router message");
 
-                obj = new Router(data);
+                obj = new Router(new Headers(headers), data);
+
             } else if (topic.equals("openbmp.parsed.peer")) {
                 logger.debug("Parsing peer message");
 
