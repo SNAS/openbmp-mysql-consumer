@@ -41,27 +41,27 @@ public class Headers {
         String headers[] = data.split("\n");
         for(String header : headers){
             
-            String value = header.split(":")[1];
+            String value = header.split(":")[1].trim();
 
             switch(header.split(":")[0].trim()){
                 case "V":{
-                    this.version = value.trim();
+                    this.version = value;
                     break;
                 }
                 case "C_HASH_ID":{
-                    this.collector_hash_id = value.trim();
+                    this.collector_hash_id = value;
                     break;
                 }
                 case "L":{
-                    this.length = Long.valueOf(value.trim());
+                    this.length = Long.valueOf(value);
                     break;
                 }
                 case "R":{
-                    this.records = Long.valueOf(value.trim());
+                    this.records = Long.valueOf(value);
                     break;
                 }
                 case "R_HASH_ID":{
-                    this.router_hash_id = value.trim();
+                    this.router_hash_id = value;
                     break;
                 }
             }
