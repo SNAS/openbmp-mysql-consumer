@@ -1,14 +1,8 @@
 package org.openbmp.handler;
 
-import org.openbmp.helpers.IpAddr;
-import org.openbmp.processor.ParseLongEmptyAsZero;
-import org.openbmp.processor.ParseNullAsEmpty;
-import org.openbmp.processor.ParseTimestamp;
-import org.supercsv.cellprocessor.ParseLong;
-import org.supercsv.cellprocessor.constraint.NotNull;
-import org.supercsv.cellprocessor.ift.CellProcessor;
-
 /**
+ * Used to include headers of the messages
+ *
  * Created by ALEX on 12/2/15.
  */
 public class Headers {
