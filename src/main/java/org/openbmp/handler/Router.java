@@ -106,7 +106,7 @@ public class Router extends Base {
             sb.append("'" + rowMap.get(i).get("term_reason") + "',");
             sb.append("'" + rowMap.get(i).get("term_data") + "',");
             sb.append("'" + rowMap.get(i).get("init_data") + "',");
-            sb.append("'" + rowMap.get(i).get("description") + "'");
+            sb.append("'" + rowMap.get(i).get("description") + "',");
             sb.append("'" + headers.getCollector_hash_id() + "'");
             sb.append(')');
         }
