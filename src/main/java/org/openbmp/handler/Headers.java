@@ -1,14 +1,17 @@
 package org.openbmp.handler;
 
-import org.openbmp.helpers.IpAddr;
-import org.openbmp.processor.ParseLongEmptyAsZero;
-import org.openbmp.processor.ParseNullAsEmpty;
-import org.openbmp.processor.ParseTimestamp;
-import org.supercsv.cellprocessor.ParseLong;
-import org.supercsv.cellprocessor.constraint.NotNull;
-import org.supercsv.cellprocessor.ift.CellProcessor;
+/*
+ * Copyright (c) 2015 Cisco Systems, Inc. and others.  All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v1.0 which accompanies this distribution,
+ * and is available at http://www.eclipse.org/legal/epl-v10.html
+ *
+ */
 
 /**
+ * Used to include headers of the messages
+ *
  * Created by ALEX on 12/2/15.
  */
 public class Headers {
