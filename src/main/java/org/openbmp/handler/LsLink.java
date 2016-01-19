@@ -129,7 +129,7 @@ public class LsLink extends Base {
             sb.append("'" + rowMap.get(i).get("peer_hash") + "',");
             sb.append("'" + rowMap.get(i).get("base_attr_hash") + "',");
             sb.append(rowMap.get(i).get("routing_id") + ",");
-            sb.append("'" + rowMap.get(i).get("mt_id") + "',");
+            sb.append("0x" + rowMap.get(i).get("mt_id") + ",");
             sb.append("'" + rowMap.get(i).get("intf_ip") + "',");
             sb.append("'" + rowMap.get(i).get("nei_ip") + "',");
 

@@ -160,31 +160,48 @@ public class IpAddr {
         StringBuilder hex_binary_ip = new StringBuilder();
 
         InetAddress ipaddr = null;
-        try {
-            ipaddr = InetAddress.getByName(ip_address);
-            byte [] addr = ipaddr.getAddress();
 
-            int remaining_bits = (addr.length * 8) - bits;
+        // If length is zero, then it's the default - set broacast to all ones
+        if (bits == 0) {
+            int bytes = 4;
 
-            BigInteger bcast = new BigInteger(addr);
-
-            int i;
-
-            // Set host bits
-            for (i = 0; i < remaining_bits; i++) {
-                if (!bcast.testBit(i))
-                    bcast = bcast.flipBit(i);
+            if (ip_address.indexOf(':') >= 0) {
+                bytes = 16;
             }
 
-            addr = bcast.toByteArray();
-
-            // format the broadcast IP in hex
-            for (i = 0; i < addr.length; i++) {
-                hex_binary_ip.append(String.format("%02X", addr[i]));
+            for (int i = 0; i < bytes; i++) {
+                hex_binary_ip.append("FF");
             }
 
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
+        }
+        else {
+
+            try {
+                ipaddr = InetAddress.getByName(ip_address);
+                byte[] addr = ipaddr.getAddress();
+
+                int remaining_bits = (addr.length * 8) - bits;
+
+                BigInteger bcast = new BigInteger(addr);
+
+                int i;
+
+                // Set host bits
+                for (i = 0; i < remaining_bits; i++) {
+                    if (!bcast.testBit(i))
+                        bcast = bcast.flipBit(i);
+                }
+
+                addr = bcast.toByteArray();
+
+                // format the broadcast IP in hex
+                for (i = 0; i < addr.length; i++) {
+                    hex_binary_ip.append(String.format("%02X", addr[i]));
+                }
+
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
         }
 
         return hex_binary_ip.toString();
