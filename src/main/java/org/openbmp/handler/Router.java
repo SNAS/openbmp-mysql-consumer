@@ -15,6 +15,10 @@ import org.supercsv.cellprocessor.ParseLong;
 import org.supercsv.cellprocessor.constraint.NotNull;
 import org.supercsv.cellprocessor.ift.CellProcessor;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Format class for router parsed messages (openbmp.parsed.router)
  *
@@ -106,10 +110,59 @@ public class Router extends Base {
             sb.append("'" + rowMap.get(i).get("term_reason") + "',");
             sb.append("'" + rowMap.get(i).get("term_data") + "',");
             sb.append("'" + rowMap.get(i).get("init_data") + "',");
-            sb.append("'" + rowMap.get(i).get("description") + "'");
+            sb.append("'" + rowMap.get(i).get("description") + "',");
             sb.append("'" + headers.getCollector_hash_id() + "'");
             sb.append(')');
         }
+
+        return sb.toString();
+    }
+
+
+    /**
+     * Generate MySQL update statement to update peer status
+     *
+     * Avoids faulty report of peer status when router gets disconnected
+     *
+     * @return Multi statement update is returned, such as update ...; update ...;
+     */
+    public String genPeerRouterUpdate(Map<String, Integer> routerConMap) {
+
+        StringBuilder sb = new StringBuilder();
+
+        List<Map<String, Object>> resultMap = new ArrayList<>();
+        resultMap.addAll(rowMap);
+
+
+        for (int i = 0; i < rowMap.size(); i++) {
+
+            String key = headers.getCollector_hash_id() + "#" + rowMap.get(i).get("ip_address");
+
+            if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("first") || ((String) rowMap.get(i).get("action")).equalsIgnoreCase("init")) {
+                if (sb.length() > 0)
+                    sb.append(";");
+                sb.append("UPDATE bgp_peers SET state = 0 WHERE router_hash_id = '");
+                sb.append(rowMap.get(i).get("hash") + "'");
+                if (routerConMap.containsKey(key)) {
+                    //Replace the entry by connections + 1
+                    int value = routerConMap.get(key);
+                    routerConMap.put(key, value + 1);
+                } else {
+                    routerConMap.put(key, 1);
+                }
+            } else if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("term")) {
+                if (routerConMap.containsKey(key)) {
+                    //Replace the entry by connections - 1
+                    int value = routerConMap.get(key);
+                    routerConMap.put(key, value - 1);
+                    if (routerConMap.get(key) > 0) {
+                        resultMap.remove(rowMap.get(i));
+                    }
+                }
+            }
+        }
+
+        rowMap = resultMap;
 
         return sb.toString();
     }

@@ -34,6 +34,8 @@ public class MySQLConsumer implements Runnable {
     private MySQLWriterThread writerThread;
     private BigInteger messageCount;
 
+    private Map<String,Integer> routerConMap;
+
     /*
      * FIFO queue for SQL messages to be written/inserted
      *      Queue message:
@@ -54,11 +56,12 @@ public class MySQLConsumer implements Runnable {
      * @param threadNumber         this tread nubmer, used for logging
      * @param cfg                  configuration
      */
-    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics) {
+    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics, Map<String,Integer> routerConMap) {
         m_threadNumber = threadNumber;
         m_stream = stream;
         m_topics = topics;
         messageCount = BigInteger.valueOf(0);
+        this.routerConMap = routerConMap;
 
         /*
          * Start MySQL Writer thread - only one thread is needed
@@ -140,12 +143,50 @@ public class MySQLConsumer implements Runnable {
             if (topic.equals("openbmp.parsed.collector")) {
                 logger.debug("Parsing collector message");
 
-                obj = new Collector(data);
+                Collector collector = new Collector(data);
+                obj=collector;
+
+                // Disconnect the routers
+                String sql = collector.genRouterCollectorUpdate(routerConMap);
+
+                collector.maintainHeartbeats(writerQueue);
+
+                if (sql != null && !sql.isEmpty()) {
+                    Map<String, String> router_update = new HashMap<>();
+                    router_update.put("query", sql);
+
+                    // block if space is not available
+                    try {
+                        logger.debug("Added router disconnect correction to queue: size = %d", writerQueue.size());
+                        writerQueue.put(router_update);
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
 
             } else if (topic.equals("openbmp.parsed.router")) {
                 logger.debug("Parsing router message");
 
-                obj = new Router(new Headers(headers), data);
+                Router router = new Router(new Headers(headers), data);
+                obj = router;
+
+                // Disconnect the peers
+                String sql = router.genPeerRouterUpdate(routerConMap);
+
+                if (sql != null && !sql.isEmpty()) {
+                    Map<String, String> peer_update = new HashMap<>();
+                    peer_update.put("query", sql);
+
+                    // block if space is not available
+                    try {
+                        logger.debug("Added peer disconnect correction to queue: size = %d", writerQueue.size());
+                        writerQueue.put(peer_update);
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
 
             } else if (topic.equals("openbmp.parsed.peer")) {
                 logger.debug("Parsing peer message");
