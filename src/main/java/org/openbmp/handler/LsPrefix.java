@@ -119,7 +119,7 @@ public class LsPrefix extends Base {
             sb.append("'" + rowMap.get(i).get("base_attr_hash") + "',");
             sb.append(rowMap.get(i).get("routing_id") + ",");
             sb.append("'" + rowMap.get(i).get("local_node_hash") + "',");
-            sb.append("'" + rowMap.get(i).get("mt_id") + "',");
+            sb.append("0x" + rowMap.get(i).get("mt_id") + ",");
             sb.append("'" + rowMap.get(i).get("protocol") + "',");
             sb.append("'" + rowMap.get(i).get("prefix") + "',");
             sb.append(rowMap.get(i).get("prefix_len") + ",");
