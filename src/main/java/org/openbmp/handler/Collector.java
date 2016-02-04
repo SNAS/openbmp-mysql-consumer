@@ -7,12 +7,20 @@ package org.openbmp.handler;
  * and is available at http://www.eclipse.org/legal/epl-v10.html
  *
  */
+import org.openbmp.Config;
+import org.openbmp.helpers.HeartbeatListener;
 import org.openbmp.processor.ParseNullAsEmpty;
 import org.openbmp.processor.ParseTimestamp;
 import org.supercsv.cellprocessor.ParseInt;
 import org.supercsv.cellprocessor.ParseLong;
 import org.supercsv.cellprocessor.constraint.NotNull;
 import org.supercsv.cellprocessor.ift.CellProcessor;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * Format class for collector parsed messages (openbmp.parsed.collector)
@@ -21,6 +29,8 @@ import org.supercsv.cellprocessor.ift.CellProcessor;
  *
  */
 public class Collector extends Base {
+
+    private static Map<String,TimerTask> heartbeatListeners;
 
     /**
      * Handle the message by parsing it and storing the data in memory.
@@ -88,6 +98,84 @@ public class Collector extends Base {
             sb.append(rowMap.get(i).get("router_count") + ",");
             sb.append("'" + rowMap.get(i).get("timestamp") + "'");
             sb.append(')');
+        }
+
+        return sb.toString();
+    }
+
+
+    /**
+     * Runs thread to listen to heartbeat
+     *
+     * @param writerQueue
+     */
+    public void maintainHeartbeats(BlockingQueue<Map<String, String>> writerQueue) {
+        for (int i = 0; i < rowMap.size(); i++) {
+
+            String action = (String) rowMap.get(i).get("action");
+            String hash = (String) rowMap.get(i).get("hash");
+
+            if (!action.equalsIgnoreCase("stopped")) {
+                System.out.println("Started listening!");
+                Config cfg = Config.getInstance();
+
+                if (heartbeatListeners == null)
+                    heartbeatListeners = new HashMap<>();
+
+                if (heartbeatListeners.containsKey(hash))
+                    heartbeatListeners.get(hash).cancel();
+
+                Timer timer = new Timer();
+                TimerTask task = new HeartbeatListener(hash, writerQueue);
+                timer.schedule(task, cfg.getHeartbeatInterval());
+                heartbeatListeners.put(hash, task);
+            }
+        }
+
+    }
+
+    /**
+     * Generate MySQL update statement to update router status
+     *
+     * Avoids faulty report of router status when collector gets disconnected
+     *
+     * @return Multi statement update is returned, such as update ...; update ...;
+     */
+    public String genRouterCollectorUpdate(Map<String, Integer> routerConMap) {
+
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < rowMap.size(); i++) {
+
+            String action = (String) rowMap.get(i).get("action");
+
+            if (i > 0 && sb.length() > 0)
+                sb.append(';');
+
+            if (action.equalsIgnoreCase("started") || action.equalsIgnoreCase("stopped")) {
+                sb.append("UPDATE routers SET isConnected = False WHERE collector_hash_id = '");
+                sb.append(rowMap.get(i).get("hash") + "'");
+                for (Map.Entry<String, Integer> entry : routerConMap.entrySet()) {
+                    if (entry.getKey().startsWith((String) rowMap.get(i).get("hash")))
+                        routerConMap.remove(entry.getKey());
+                }
+            }
+
+            if (routerConMap.size() == 0 && !action.equalsIgnoreCase("stopped")) {
+                String[] routerArray = ((String) rowMap.get(i).get("routers")).split(",");
+                if (routerArray.length > 0) {
+                    String routers = "(";
+                    for (String router : routerArray) {
+                        routerConMap.put(rowMap.get(i).get("hash") + "#" + router.trim(), 1);
+                        routers += "ip_address = '" + router.trim() + "' OR ";
+                    }
+                    routers = routers.substring(0, routers.length() - 4) + ")";
+                    if (sb.length() > 0)
+                        sb.append(";");
+                    sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + rowMap.get(i).get("hash") + "' AND " + routers);
+                }
+            }
+
         }
 
         return sb.toString();

@@ -8,11 +8,9 @@
  */
 package org.openbmp;
 
-import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.commons.cli.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import scala.Int;
 
 /**
  * Configuration for program
@@ -22,13 +20,15 @@ import scala.Int;
 public class Config {
     private static final Logger logger = LogManager.getFormatterLogger(MySQLConsumerApp.class.getName());
 
+    private static Config instance = null;
+
     private Options options = new Options();
 
     /// Config variables
     private String zookeeperAddress = "localhost:2181";
     private String groupId = "openbmp-mysql-consumer";
     private String clientId = null;
-    private Integer heartbeat_age = 1440;
+    private Integer expected_heartbeat_interval = 330000;
     private Integer stats_interval = 300;
     private String db_host = "localhost:3306";
     private String db_user = "openbmp";
@@ -36,12 +36,21 @@ public class Config {
     private String db_name = "openBMP";
     private Boolean offsetLargest = Boolean.FALSE;
 
-    public Config() {
+    //Turns this class to a singleton
+    public static Config getInstance() {
+        if(instance==null)
+        {
+            instance = new Config();
+        }
+        return instance;
+    }
+
+    protected Config() {
         options.addOption("zk", "zookeeper", true, "Zookeeper hostanme:port (default is localhost:2181)");
         options.addOption("g", "group.id", true, "Kafka group ID (default is openbmp-mysql-consumer)");
         options.addOption("c", "client.id", true, "Kafka client ID (default uses group.id");
         options.addOption("ol", "offset_largest", false, "Set offset to largest when offset is not known");
-        options.addOption("e", "heartbeat_age", true, "Max age in minutes for collector heartbeats (default is 1440/4 hours)");
+        options.addOption("e", "expected_heartbeat_interval", true, "Max age in minutes for collector heartbeats (default is 6 minutes)");
         options.addOption("s", "stats_interval", true, "Stats interval in seconds (default 300 seconds, 0 disables");
         options.addOption("dh", "db_host", true, "Database host (default is localhost:3306)");
         options.addOption("du", "db_user", true, "Database username (default is openbmp)");
@@ -80,7 +89,7 @@ public class Config {
                 groupId = cmd.getOptionValue("g");
 
             if (cmd.hasOption("e"))
-                heartbeat_age = Integer.valueOf(cmd.getOptionValue("e"));
+                expected_heartbeat_interval = Integer.valueOf(cmd.getOptionValue("e")) * 60 * 1000 + 30000;
 
             if (cmd.hasOption("s"))
                 stats_interval = Integer.valueOf(cmd.getOptionValue("s"));
@@ -146,7 +155,7 @@ public class Config {
 
     Boolean getOffsetLargest() { return offsetLargest; }
 
-    Integer getHeartbeatInterval() { return heartbeat_age; }
+    public Integer getHeartbeatInterval() { return expected_heartbeat_interval; }
 
     Integer getStatsInterval() { return stats_interval; }
 }
