@@ -33,8 +33,9 @@ public class MySQLConsumer implements Runnable {
     private ExecutorService executor;
     private MySQLWriterThread writerThread;
     private BigInteger messageCount;
+    private Long last_collector_msg_time;
 
-    private Map<String,Integer> routerConMap;
+    private Map<String,Map<String, Integer>> routerConMap;
 
     /*
      * FIFO queue for SQL messages to be written/inserted
@@ -55,8 +56,10 @@ public class MySQLConsumer implements Runnable {
      * @param stream               topic/partition stream
      * @param threadNumber         this tread nubmer, used for logging
      * @param cfg                  configuration
+     * @param routerConMap         Hash of collectors/routers and connection counts
      */
-    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics, Map<String,Integer> routerConMap) {
+    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics,
+                         Map<String,Map<String, Integer>> routerConMap) {
         m_threadNumber = threadNumber;
         m_stream = stream;
         m_topics = topics;
@@ -146,12 +149,14 @@ public class MySQLConsumer implements Runnable {
                 Collector collector = new Collector(data);
                 obj=collector;
 
+                last_collector_msg_time = System.currentTimeMillis();
+
                 // Disconnect the routers
                 String sql = collector.genRouterCollectorUpdate(routerConMap);
 
-                collector.maintainHeartbeats(writerQueue);
-
                 if (sql != null && !sql.isEmpty()) {
+                    logger.debug("collectorUpdate: %s", sql);
+
                     Map<String, String> router_update = new HashMap<>();
                     router_update.put("query", sql);
 
@@ -175,6 +180,8 @@ public class MySQLConsumer implements Runnable {
                 String sql = router.genPeerRouterUpdate(routerConMap);
 
                 if (sql != null && !sql.isEmpty()) {
+                    logger.debug("RouterUpdate = %s", sql);
+
                     Map<String, String> peer_update = new HashMap<>();
                     peer_update.put("query", sql);
 
@@ -200,6 +207,7 @@ public class MySQLConsumer implements Runnable {
 
                 // block if space is not available
                 try {
+                    logger.debug("Processed peer [%d] %s / %s", m_threadNumber, peer.genValuesStatement(), peer.genRibPeerUpdate());
                     logger.debug("Added peer rib update message to queue: size = %d", writerQueue.size());
                     writerQueue.put(rib_update);
 
@@ -313,5 +321,5 @@ public class MySQLConsumer implements Runnable {
     public synchronized BigInteger getMessageCount() { return messageCount; }
     public synchronized Integer getQueueSize() { return writerQueue.size(); }
     public synchronized String getTopics() { return m_topics; }
-
+    public synchronized Long getLast_collector_msg_time() { return last_collector_msg_time; }
 }

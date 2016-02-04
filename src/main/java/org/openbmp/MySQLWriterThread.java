@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,6 +29,7 @@ import org.apache.logging.log4j.Logger;
 public class MySQLWriterThread implements  Runnable {
     private final Integer MAX_BULK_STATEMENTS = 5000;           // Maximum number of bulk values/multi-statements to allow
     private final Integer MAX_BULK_WAIT_MS = 100;               // Maximum milliseconds to wait for bulk messages
+    private final Integer MAX_MYSQL_RETRIES = 10;               // Maximum MySQL retires
 
     private static final Logger logger = LogManager.getFormatterLogger(MySQLWriterThread.class.getName());
 
@@ -93,18 +95,21 @@ public class MySQLWriterThread implements  Runnable {
      * @param retries       Number of times to retry, zero means no retries
      */
     private void mysqlQueryUpdate(String query, int retries) {
+        Boolean success = Boolean.FALSE;
+
         // Loop the request if broken pipe, connection timed out, or deadlock
-        for (int i = 0; i <= retries; i++) {
+         for (int i = 0; i <= retries; i++) {
             try {
                 Statement stmt = con.createStatement();
-                logger.debug("SQL Query retry = %d: %s", i, query);
+                logger.trace("SQL Query retry = %d: %s", i, query);
                 stmt.executeUpdate(query);
                 i = retries;
+                success = Boolean.TRUE;
                 break;
 
             } catch (SQLException e) {
-                logger.warn("SQL exception state: " + e.getSQLState());
-                logger.warn("SQL exception: " + e.getMessage());
+                logger.info("SQL exception state " + i + " : " + e.getSQLState());
+                logger.info("SQL exception: " + e.getMessage());
                 logger.debug("query: " + query);
                 //e.printStackTrace();
 
@@ -114,6 +119,10 @@ public class MySQLWriterThread implements  Runnable {
                     break;
                 }
             }
+        }
+
+        if (!success) {
+            logger.warn("Failed to insert/update after max retires of %d", MAX_MYSQL_RETRIES);
         }
     }
 
@@ -173,7 +182,7 @@ public class MySQLWriterThread implements  Runnable {
                         }
 
                         if (query.length() > 0) {
-                            mysqlQueryUpdate(query.toString(), 5);
+                            mysqlQueryUpdate(query.toString(), 10);
                         }
 
                         prev_time = System.currentTimeMillis();

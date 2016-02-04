@@ -41,14 +41,18 @@ public class MySQLConsumerApp
     private final Config cfg;
     private static List<MySQLConsumer> _threads;
 
-    private Map<String,Integer> routerConMap;
+    /**
+     * routerConMap is a persistent map of collectors and routers. It's a hash of hashes.
+     *      routerConMap[collectorHashId][RouterIp] = reference count of connections
+     */
+    private Map<String,Map<String, Integer>> routerConMap;
 
     public MySQLConsumerApp(Config cfg) {
 
         this.cfg = cfg;
         consumer = null;
         _threads = new ArrayList<MySQLConsumer>();
-        routerConMap = new ConcurrentHashMap<>();
+        routerConMap = new ConcurrentHashMap<String, Map<String, Integer>>();
 
         Boolean reconnect = true;
 

@@ -7,8 +7,6 @@ package org.openbmp.handler;
  * and is available at http://www.eclipse.org/legal/epl-v10.html
  *
  */
-import org.openbmp.Config;
-import org.openbmp.helpers.HeartbeatListener;
 import org.openbmp.processor.ParseNullAsEmpty;
 import org.openbmp.processor.ParseTimestamp;
 import org.supercsv.cellprocessor.ParseInt;
@@ -16,11 +14,9 @@ import org.supercsv.cellprocessor.ParseLong;
 import org.supercsv.cellprocessor.constraint.NotNull;
 import org.supercsv.cellprocessor.ift.CellProcessor;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Format class for collector parsed messages (openbmp.parsed.collector)
@@ -105,45 +101,19 @@ public class Collector extends Base {
 
 
     /**
-     * Runs thread to listen to heartbeat
-     *
-     * @param writerQueue
-     */
-    public void maintainHeartbeats(BlockingQueue<Map<String, String>> writerQueue) {
-        for (int i = 0; i < rowMap.size(); i++) {
-
-            String action = (String) rowMap.get(i).get("action");
-            String hash = (String) rowMap.get(i).get("hash");
-
-            if (!action.equalsIgnoreCase("stopped")) {
-                System.out.println("Started listening!");
-                Config cfg = Config.getInstance();
-
-                if (heartbeatListeners == null)
-                    heartbeatListeners = new HashMap<>();
-
-                if (heartbeatListeners.containsKey(hash))
-                    heartbeatListeners.get(hash).cancel();
-
-                Timer timer = new Timer();
-                TimerTask task = new HeartbeatListener(hash, writerQueue);
-                timer.schedule(task, cfg.getHeartbeatInterval());
-                heartbeatListeners.put(hash, task);
-            }
-        }
-
-    }
-
-    /**
      * Generate MySQL update statement to update router status
      *
      * Avoids faulty report of router status when collector gets disconnected
      *
+     * @param routerConMap         Hash of collectors/routers and connection counts
+     *
      * @return Multi statement update is returned, such as update ...; update ...;
      */
-    public String genRouterCollectorUpdate(Map<String, Integer> routerConMap) {
-
+    public String genRouterCollectorUpdate( Map<String,Map<String, Integer>> routerConMap) {
+        Boolean changed = Boolean.FALSE;
         StringBuilder sb = new StringBuilder();
+        StringBuilder router_sql_in_list = new StringBuilder();
+        router_sql_in_list.append("(");
 
         for (int i = 0; i < rowMap.size(); i++) {
 
@@ -155,27 +125,55 @@ public class Collector extends Base {
             if (action.equalsIgnoreCase("started") || action.equalsIgnoreCase("stopped")) {
                 sb.append("UPDATE routers SET isConnected = False WHERE collector_hash_id = '");
                 sb.append(rowMap.get(i).get("hash") + "'");
-                for (Map.Entry<String, Integer> entry : routerConMap.entrySet()) {
-                    if (entry.getKey().startsWith((String) rowMap.get(i).get("hash")))
-                        routerConMap.remove(entry.getKey());
-                }
-            }
 
-            if (routerConMap.size() == 0 && !action.equalsIgnoreCase("stopped")) {
-                String[] routerArray = ((String) rowMap.get(i).get("routers")).split(",");
+                // Collector start/stopped should always have an empty router set
+                routerConMap.remove((String)rowMap.get(i).get("hash"));
+
+            }
+            else { // heartbeat or changed
+
+                // Add concurrent connection map for collector if it does not exist already
+                if (! routerConMap.containsKey((String)rowMap.get(i).get("hash"))) {
+                    routerConMap.put((String)rowMap.get(i).get("hash"), new ConcurrentHashMap<String, Integer>());
+                    changed = Boolean.TRUE;
+                }
+
+                String[] routerArray = ((String) rowMap.get(i).get("routers")).split("[ ]*,[ ]*");
+
                 if (routerArray.length > 0) {
-                    String routers = "(";
+                    // Update the router list
+                    Map<String, Integer> routerMap = routerConMap.get((String) rowMap.get(i).get("hash"));
+                    routerMap.clear();
+
                     for (String router : routerArray) {
-                        routerConMap.put(rowMap.get(i).get("hash") + "#" + router.trim(), 1);
-                        routers += "ip_address = '" + router.trim() + "' OR ";
+
+                        if (routerMap.containsKey(router)) {                    // Increment
+                            routerMap.put(router, routerMap.get(router) + 1);
+                        } else {                                                // new
+                            if (routerMap.size() > 0) {
+                                router_sql_in_list.append(" OR ");
+                            }
+
+                            router_sql_in_list.append(" ip_address = '");
+                            router_sql_in_list.append(router);
+                            router_sql_in_list.append("'");
+
+                            routerMap.put(router, 1);
+                        }
                     }
-                    routers = routers.substring(0, routers.length() - 4) + ")";
-                    if (sb.length() > 0)
-                        sb.append(";");
-                    sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + rowMap.get(i).get("hash") + "' AND " + routers);
+
+                    router_sql_in_list.append(")");
+
+                    // Update routers if there's a change
+                    if (changed && router_sql_in_list.length() > 2) {
+                        if (sb.length() > 0) {
+                            sb.append(";");
+                        }
+
+                        sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + rowMap.get(i).get("hash") + "' AND " + router_sql_in_list);
+                    }
                 }
             }
-
         }
 
         return sb.toString();

@@ -124,39 +124,51 @@ public class Router extends Base {
      *
      * Avoids faulty report of peer status when router gets disconnected
      *
+     * @param routerConMap         Hash of collectors/routers and connection counts
+     *
      * @return Multi statement update is returned, such as update ...; update ...;
      */
-    public String genPeerRouterUpdate(Map<String, Integer> routerConMap) {
+    public String genPeerRouterUpdate( Map<String,Map<String, Integer>> routerConMap) {
 
         StringBuilder sb = new StringBuilder();
 
         List<Map<String, Object>> resultMap = new ArrayList<>();
         resultMap.addAll(rowMap);
 
+        Map<String, Integer> routerMap = routerConMap.get(headers.getCollector_hash_id());
 
         for (int i = 0; i < rowMap.size(); i++) {
-
-            String key = headers.getCollector_hash_id() + "#" + rowMap.get(i).get("ip_address");
 
             if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("first") || ((String) rowMap.get(i).get("action")).equalsIgnoreCase("init")) {
                 if (sb.length() > 0)
                     sb.append(";");
+
+                // Upon initial router message, we set the state of all peers to down since we will get peer UP's
                 sb.append("UPDATE bgp_peers SET state = 0 WHERE router_hash_id = '");
                 sb.append(rowMap.get(i).get("hash") + "'");
-                if (routerConMap.containsKey(key)) {
-                    //Replace the entry by connections + 1
-                    int value = routerConMap.get(key);
-                    routerConMap.put(key, value + 1);
-                } else {
-                    routerConMap.put(key, 1);
+
+                // Collector changed/heartbeat messages maintain the routerMap, but timing might prevent an update
+                //    so add the router if it doesn't exist already
+                if (! routerMap.containsKey((String)rowMap.get(i).get("ip_address")) ) {
+                    routerMap.put((String)rowMap.get(i).get("ip_address"), 1);
                 }
-            } else if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("term")) {
-                if (routerConMap.containsKey(key)) {
-                    //Replace the entry by connections - 1
-                    int value = routerConMap.get(key);
-                    routerConMap.put(key, value - 1);
-                    if (routerConMap.get(key) > 0) {
+            }
+
+            else if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("term")) {
+                // Update the router map to reflect the termination
+                if (! routerMap.containsKey((String)rowMap.get(i).get("ip_address")) ) {
+
+                    // decrement connection count or remove the router entry on term
+                    if (routerMap.get((String)rowMap.get(i).get("ip_address")) > 1) {
+                        routerMap.put((String)rowMap.get(i).get("ip_address"),
+                                routerMap.get((String)rowMap.get(i).get("ip_address")) -1 );
+
+                        // Suppress the term message since another connection exists
                         resultMap.remove(rowMap.get(i));
+
+                    } else {
+                        routerMap.remove((String)rowMap.get(i).get("ip_address"));
+
                     }
                 }
             }
