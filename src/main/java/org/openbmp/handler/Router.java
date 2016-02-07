@@ -156,25 +156,25 @@ public class Router extends Base {
 
             else if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("term")) {
                 // Update the router map to reflect the termination
-                if (! routerMap.containsKey((String)rowMap.get(i).get("ip_address")) ) {
+                if (routerMap.containsKey((String)rowMap.get(i).get("ip_address")) ) {
 
                     // decrement connection count or remove the router entry on term
                     if (routerMap.get((String)rowMap.get(i).get("ip_address")) > 1) {
                         routerMap.put((String)rowMap.get(i).get("ip_address"),
-                                routerMap.get((String)rowMap.get(i).get("ip_address")) -1 );
+                                routerMap.get((String)rowMap.get(i).get("ip_address")) - 1 );
 
                         // Suppress the term message since another connection exists
                         resultMap.remove(rowMap.get(i));
 
                     } else {
                         routerMap.remove((String)rowMap.get(i).get("ip_address"));
-
                     }
                 }
             }
         }
 
-        rowMap = resultMap;
+        rowMap.clear();
+        rowMap.addAll(resultMap);
 
         return sb.toString();
     }
