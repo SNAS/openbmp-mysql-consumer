@@ -18,6 +18,7 @@ import org.supercsv.cellprocessor.ift.CellProcessor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Format class for router parsed messages (openbmp.parsed.router)
@@ -135,6 +136,11 @@ public class Router extends Base {
         List<Map<String, Object>> resultMap = new ArrayList<>();
         resultMap.addAll(rowMap);
 
+        // Add the collector entry if router is seen before collector message
+        if (! routerConMap.containsKey(headers.getCollector_hash_id())) {
+            routerConMap.put(headers.getCollector_hash_id(), new ConcurrentHashMap<String, Integer>());
+        }
+
         Map<String, Integer> routerMap = routerConMap.get(headers.getCollector_hash_id());
 
         for (int i = 0; i < rowMap.size(); i++) {
@@ -173,8 +179,7 @@ public class Router extends Base {
             }
         }
 
-        rowMap.clear();
-        rowMap.addAll(resultMap);
+        rowMap = resultMap;
 
         return sb.toString();
     }
