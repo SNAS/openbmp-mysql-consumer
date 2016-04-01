@@ -162,6 +162,8 @@ public class Peer extends Base {
 
         StringBuilder sb = new StringBuilder();
 
+        sb.append("SET @TRIGGER_DISABLED=TRUE; ");
+
         for (int i=0; i < rowMap.size(); i++) {
 
             if (i > 0)
@@ -171,6 +173,8 @@ public class Peer extends Base {
             sb.append(rowMap.get(i).get("hash"));
             sb.append("' AND isWithdrawn = False");
         }
+
+        sb.append("SET @TRIGGER_DISABLED=FALSE; ");
 
         return sb.toString();
     }

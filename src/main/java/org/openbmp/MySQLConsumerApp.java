@@ -16,6 +16,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -40,11 +41,18 @@ public class MySQLConsumerApp
     private final Config cfg;
     private static List<MySQLConsumer> _threads;
 
+    /**
+     * routerConMap is a persistent map of collectors and routers. It's a hash of hashes.
+     *      routerConMap[collectorHashId][RouterIp] = reference count of connections
+     */
+    private Map<String,Map<String, Integer>> routerConMap;
+
     public MySQLConsumerApp(Config cfg) {
 
         this.cfg = cfg;
         consumer = null;
         _threads = new ArrayList<MySQLConsumer>();
+        routerConMap = new ConcurrentHashMap<String, Map<String, Integer>>();
 
         Boolean reconnect = true;
 
@@ -124,7 +132,7 @@ public class MySQLConsumerApp
             List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic.getKey());
 
             for (final KafkaStream stream : streams) {
-                _threads.add(threadNumber,  new MySQLConsumer(stream, threadNumber, cfg, topic.getKey()));
+                _threads.add(threadNumber, new MySQLConsumer(stream, threadNumber, cfg, topic.getKey(), routerConMap));
 
                 executor.submit(_threads.get(threadNumber));
                 threadNumber++;
@@ -155,7 +163,7 @@ public class MySQLConsumerApp
     }
 
     public static void main(String[] args) {
-        Config cfg = new Config();
+        Config cfg = Config.getInstance();
 
         cfg.parse(args);
 

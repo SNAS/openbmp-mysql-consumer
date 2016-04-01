@@ -33,6 +33,9 @@ public class MySQLConsumer implements Runnable {
     private ExecutorService executor;
     private MySQLWriterThread writerThread;
     private BigInteger messageCount;
+    private Long last_collector_msg_time;
+
+    private Map<String,Map<String, Integer>> routerConMap;
 
     /*
      * FIFO queue for SQL messages to be written/inserted
@@ -53,12 +56,15 @@ public class MySQLConsumer implements Runnable {
      * @param stream               topic/partition stream
      * @param threadNumber         this tread nubmer, used for logging
      * @param cfg                  configuration
+     * @param routerConMap         Hash of collectors/routers and connection counts
      */
-    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics) {
+    public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics,
+                         Map<String,Map<String, Integer>> routerConMap) {
         m_threadNumber = threadNumber;
         m_stream = stream;
         m_topics = topics;
         messageCount = BigInteger.valueOf(0);
+        this.routerConMap = routerConMap;
 
         /*
          * Start MySQL Writer thread - only one thread is needed
@@ -140,11 +146,55 @@ public class MySQLConsumer implements Runnable {
             if (topic.equals("openbmp.parsed.collector")) {
                 logger.debug("Parsing collector message");
 
-                obj = new Collector(data);
+                Collector collector = new Collector(data);
+                obj=collector;
+
+                last_collector_msg_time = System.currentTimeMillis();
+
+                // Disconnect the routers
+                String sql = collector.genRouterCollectorUpdate(routerConMap);
+
+                if (sql != null && !sql.isEmpty()) {
+                    logger.debug("collectorUpdate: %s", sql);
+
+                    Map<String, String> router_update = new HashMap<>();
+                    router_update.put("query", sql);
+
+                    // block if space is not available
+                    try {
+                        logger.debug("Added router disconnect correction to queue: size = %d", writerQueue.size());
+                        writerQueue.put(router_update);
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
             } else if (topic.equals("openbmp.parsed.router")) {
                 logger.debug("Parsing router message");
 
-                obj = new Router(data);
+                Router router = new Router(new Headers(headers), data);
+                obj = router;
+
+                // Disconnect the peers
+                String sql = router.genPeerRouterUpdate(routerConMap);
+
+                if (sql != null && !sql.isEmpty()) {
+                    logger.debug("RouterUpdate = %s", sql);
+
+                    Map<String, String> peer_update = new HashMap<>();
+                    peer_update.put("query", sql);
+
+                    // block if space is not available
+                    try {
+                        logger.debug("Added peer disconnect correction to queue: size = %d", writerQueue.size());
+                        writerQueue.put(peer_update);
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
             } else if (topic.equals("openbmp.parsed.peer")) {
                 logger.debug("Parsing peer message");
 
@@ -157,6 +207,7 @@ public class MySQLConsumer implements Runnable {
 
                 // block if space is not available
                 try {
+                    logger.debug("Processed peer [%d] %s / %s", m_threadNumber, peer.genValuesStatement(), peer.genRibPeerUpdate());
                     logger.debug("Added peer rib update message to queue: size = %d", writerQueue.size());
                     writerQueue.put(rib_update);
 
@@ -270,5 +321,5 @@ public class MySQLConsumer implements Runnable {
     public synchronized BigInteger getMessageCount() { return messageCount; }
     public synchronized Integer getQueueSize() { return writerQueue.size(); }
     public synchronized String getTopics() { return m_topics; }
-
+    public synchronized Long getLast_collector_msg_time() { return last_collector_msg_time; }
 }

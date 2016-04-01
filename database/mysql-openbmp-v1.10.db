@@ -1,8 +1,8 @@
--- MySQL dump 10.15  Distrib 10.0.21-MariaDB, for debian-linux-gnu (x86_64)
+-- MySQL dump 10.13  Distrib 5.6.27, for debian-linux-gnu (x86_64)
 --
--- Host: localhost    Database: openBMP
+-- Host: 127.0.0.1    Database: openBMP
 -- ------------------------------------------------------
--- Server version	10.0.21-MariaDB-1~trusty
+-- Server version	5.5.5-10.0.23-MariaDB-1~trusty
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -154,20 +154,20 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-/*!50003 CREATE*/ /*!50017 DEFINER=`openbmp`@`localhost`*/ /*!50003 TRIGGER upd_bgp_peers BEFORE UPDATE ON bgp_peers
-        FOR EACH ROW
-            BEGIN
-                declare geo_ip_start varbinary(16);
-            
-            SELECT ip_start INTO geo_ip_start
-                FROM geo_ip
-                WHERE ip_end >= inet6_aton(new.peer_addr)
-                       and ip_start <= inet6_aton(new.peer_addr) and addr_type = if (new.isIPv4 = 1, 'ipv4', 'ipv6')
-                 ORDER BY ip_end limit 1;
-        
-            set new.geo_ip_start = geo_ip_start;
-        
-            END */;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`openbmp`@`%`*/ /*!50003 TRIGGER upd_bgp_peers BEFORE UPDATE ON bgp_peers
+FOR EACH ROW
+    BEGIN
+        declare geo_ip_start varbinary(16);
+    
+    SELECT ip_start INTO geo_ip_start
+        FROM geo_ip
+        WHERE ip_end >= inet6_aton(new.peer_addr)
+               and ip_start <= inet6_aton(new.peer_addr) and addr_type = if (new.isIPv4 = 1, 'ipv4', 'ipv6')
+         ORDER BY ip_end limit 1;
+
+    set new.geo_ip_start = geo_ip_start;
+
+    END */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
@@ -272,25 +272,21 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
--- Table structure for table `gen_prefix_validation`
+-- Table structure for table `gen_daily_bgp_rib_origin`
 --
 
-DROP TABLE IF EXISTS `gen_prefix_validation`;
+DROP TABLE IF EXISTS `gen_daily_bgp_rib_origin`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `gen_prefix_validation` (
-  `prefix` varbinary(16) NOT NULL,
-  `prefix_len` tinyint(3) unsigned NOT NULL DEFAULT '0',
-  `recv_origin_as` int(10) unsigned NOT NULL,
-  `rpki_origin_as` int(10) unsigned DEFAULT NULL,
-  `irr_origin_as` int(10) unsigned DEFAULT NULL,
-  `irr_source` varchar(32) DEFAULT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`prefix`,`prefix_len`,`recv_origin_as`),
-  KEY `idx_origin` (`recv_origin_as`),
-  KEY `idx_prefix` (`prefix`),
-  KEY `idx_prefix_full` (`prefix`,`prefix_len`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+CREATE TABLE `gen_daily_bgp_rib_origin` (
+  `prefix_bin` varbinary(16) NOT NULL,
+  `prefix_len` int(8) unsigned NOT NULL,
+  `origin_as` int(10) unsigned NOT NULL,
+  `prefix_bcast_bin` varbinary(16) NOT NULL,
+  `isIPv4` tinyint(4) NOT NULL,
+  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`prefix_bin`,`prefix_len`,`origin_as`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -376,12 +372,12 @@ DROP TABLE IF EXISTS `geo_location`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `geo_location` (
-  `country` varchar(50) NOT NULL,
+  `country` char(2) NOT NULL,
   `city` varchar(50) NOT NULL,
-  `latitude` float NOT NULL,
-  `longitude` float NOT NULL,
+  `latitude` float DEFAULT NULL,
+  `longitude` float DEFAULT NULL,
   PRIMARY KEY (`country`,`city`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -475,7 +471,7 @@ CREATE TABLE `ls_prefixes` (
   `prefix_len` int(8) unsigned NOT NULL,
   `prefix_bin` varbinary(16) NOT NULL,
   `prefix_bcast_bin` varbinary(16) NOT NULL,
-  `ospf_route_type` enum('Intra','Inter','Ext-1','Ext-2','NSSA-1','NSSA-2','') NOT NULL DEFAULT 'Intra',
+  `ospf_route_type` enum('Intra','Inter','Ext-1','Ext-2','NSSA-1','NSSA-2','') DEFAULT NULL,
   `igp_flags` varchar(20) NOT NULL,
   `isIPv4` tinyint(4) NOT NULL,
   `route_tag` int(10) unsigned DEFAULT NULL,
@@ -484,7 +480,7 @@ CREATE TABLE `ls_prefixes` (
   `ospf_fwd_addr` varchar(46) DEFAULT NULL,
   `isWithdrawn` bit(1) NOT NULL DEFAULT b'0',
   `timestamp` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-  PRIMARY KEY (`hash_id`,`peer_hash_id`,`ospf_route_type`),
+  PRIMARY KEY (`hash_id`,`peer_hash_id`,`local_node_hash_id`),
   KEY `idx_local_router_id` (`local_node_hash_id`),
   KEY `idx_path_attr_hash_id` (`path_attr_hash_id`),
   KEY `idx_range_prefix_bin` (`prefix_bcast_bin`,`prefix_bin`)
@@ -515,25 +511,14 @@ CREATE TABLE `path_attr_log` (
 /*!50500 PARTITION BY RANGE  COLUMNS(`timestamp`)
 SUBPARTITION BY KEY (peer_hash_id)
 SUBPARTITIONS 32
-(PARTITION p2016_01 VALUES LESS THAN ('2016-02-01') ENGINE = InnoDB,
- PARTITION p2016_02 VALUES LESS THAN ('2016-03-01') ENGINE = InnoDB,
- PARTITION p2016_03 VALUES LESS THAN ('2016-04-01') ENGINE = InnoDB,
- PARTITION p2016_04 VALUES LESS THAN ('2016-05-01') ENGINE = InnoDB,
- PARTITION p2016_05 VALUES LESS THAN ('2016-06-01') ENGINE = InnoDB,
- PARTITION p2016_06 VALUES LESS THAN ('2016-07-01') ENGINE = InnoDB,
- PARTITION p2016_07 VALUES LESS THAN ('2016-08-01') ENGINE = InnoDB,
- PARTITION p2016_08 VALUES LESS THAN ('2016-09-01') ENGINE = InnoDB,
- PARTITION p2016_09 VALUES LESS THAN ('2016-10-01') ENGINE = InnoDB,
- PARTITION p2016_10 VALUES LESS THAN ('2016-11-01') ENGINE = InnoDB,
- PARTITION p2016_11 VALUES LESS THAN ('2016-12-01') ENGINE = InnoDB,
- PARTITION p2016_12 VALUES LESS THAN ('2017-01-01') ENGINE = InnoDB,
- PARTITION p2017_01 VALUES LESS THAN ('2017-02-01') ENGINE = InnoDB,
- PARTITION p2017_02 VALUES LESS THAN ('2017-03-01') ENGINE = InnoDB,
- PARTITION p2017_03 VALUES LESS THAN ('2017-04-01') ENGINE = InnoDB,
- PARTITION p2017_04 VALUES LESS THAN ('2017-05-01') ENGINE = InnoDB,
- PARTITION p2017_05 VALUES LESS THAN ('2017-06-01') ENGINE = InnoDB,
- PARTITION p2017_06 VALUES LESS THAN ('2017-07-01') ENGINE = InnoDB,
- PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
+(PARTITION p2015_06 VALUES LESS THAN ('2015-07-01') ENGINE = InnoDB,
+ PARTITION p2015_07 VALUES LESS THAN ('2015-08-01') ENGINE = InnoDB,
+ PARTITION p2015_08 VALUES LESS THAN ('2015-09-01') ENGINE = InnoDB,
+ PARTITION p2015_09 VALUES LESS THAN ('2015-10-01') ENGINE = InnoDB,
+ PARTITION p2015_10 VALUES LESS THAN ('2015-11-01') ENGINE = InnoDB,
+ PARTITION p2015_11 VALUES LESS THAN ('2015-12-01') ENGINE = InnoDB,
+ PARTITION p2015_12 VALUES LESS THAN ('2016-01-01') ENGINE = InnoDB,
+ PARTITION p2016_01 VALUES LESS THAN ('2016-02-01') ENGINE = InnoDB,
  PARTITION pOther VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB) */;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -615,22 +600,21 @@ CREATE TABLE `peer_up_events` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Temporary table structure for view `prefix_aspath`
+-- Temporary view structure for view `prefix_aspath`
 --
 
 DROP TABLE IF EXISTS `prefix_aspath`;
 /*!50001 DROP VIEW IF EXISTS `prefix_aspath`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `prefix_aspath` (
-  `RouterName` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `Prefix` tinyint NOT NULL,
-  `PrefixLen` tinyint NOT NULL,
-  `Origin` tinyint NOT NULL,
-  `AS_Path` tinyint NOT NULL,
-  `NH` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `prefix_aspath` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `PeerName`,
+ 1 AS `Prefix`,
+ 1 AS `PrefixLen`,
+ 1 AS `Origin`,
+ 1 AS `AS_Path`,
+ 1 AS `NH`*/;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -679,29 +663,28 @@ PARTITIONS 48 */;
 /*!50003 SET sql_mode              = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`openbmp`@`localhost`*/ /*!50003 TRIGGER rib_pre_update BEFORE UPDATE on rib
-        FOR EACH ROW
-            
-            
-            IF ( @TRIGGER_DISABLED is null OR @TRIGGER_DISABLED = FALSE ) THEN
+  FOR EACH ROW
+      
+      IF ( @TRIGGER_DISABLED is null OR @TRIGGER_DISABLED = FALSE ) THEN
 
-              
-              IF (new.hash_id = old.hash_id AND new.peer_hash_id = old.peer_hash_id) THEN
-                  IF (new.isWithdrawn = False AND old.path_attr_hash_id != new.path_attr_hash_id) THEN
-                         
-                          INSERT IGNORE INTO path_attr_log (prefix,prefix_len,path_attr_hash_id,peer_hash_id,timestamp)
-                                      VALUES (old.prefix,old.prefix_len,old.path_attr_hash_id,old.peer_hash_id,
-                                              new.timestamp);
+        
+        IF (new.hash_id = old.hash_id AND new.peer_hash_id = old.peer_hash_id) THEN
+            IF (new.isWithdrawn = False AND old.path_attr_hash_id != new.path_attr_hash_id) THEN
+                   
+                    INSERT IGNORE INTO path_attr_log (prefix,prefix_len,path_attr_hash_id,peer_hash_id,timestamp) 
+                                VALUES (old.prefix,old.prefix_len,old.path_attr_hash_id,old.peer_hash_id,
+                                        new.timestamp);
 
-                  ELSEIF (new.isWithdrawn = True) THEN
-                     
-                      INSERT IGNORE INTO withdrawn_log
-                              (prefix,prefix_len,peer_hash_id,path_attr_hash_id,timestamp)
-                                  VALUES (old.prefix,old.prefix_len,old.peer_hash_id,
-                                          old.path_attr_hash_id,new.timestamp);
-
-                  END IF;       
-              END IF;
-            END IF */;;
+            ELSEIF (new.isWithdrawn = True) THEN
+               
+                INSERT IGNORE INTO withdrawn_log
+                        (prefix,prefix_len,peer_hash_id,path_attr_hash_id,timestamp) 
+                            VALUES (old.prefix,old.prefix_len,old.peer_hash_id,
+                                    old.path_attr_hash_id,new.timestamp);
+               
+            END IF;       
+        END IF;
+      END IF */;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
@@ -795,26 +778,6 @@ DELIMITER ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
 
 --
--- Table structure for table `rpki_validator`
---
-
-DROP TABLE IF EXISTS `rpki_validator`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `rpki_validator` (
-  `prefix` varbinary(16) NOT NULL,
-  `prefix_len` tinyint(3) unsigned NOT NULL DEFAULT '0',
-  `prefix_len_max` tinyint(3) unsigned NOT NULL DEFAULT '0',
-  `origin_as` int(10) unsigned NOT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`prefix`,`prefix_len`,`prefix_len_max`,`origin_as`),
-  KEY `idx_origin` (`origin_as`),
-  KEY `idx_prefix` (`prefix`),
-  KEY `idx_prefix_full` (`prefix`,`prefix_len`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `stat_reports`
 --
 
@@ -862,371 +825,345 @@ CREATE TABLE `unicast_rib_lookup` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `users`
---
-
-DROP TABLE IF EXISTS `users`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `users` (
-  `username` varchar(50) NOT NULL,
-  `password` varchar(50) NOT NULL,
-  `type` varchar(10) NOT NULL,
-  PRIMARY KEY (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Temporary table structure for view `v_geo_ip`
+-- Temporary view structure for view `v_geo_ip`
 --
 
 DROP TABLE IF EXISTS `v_geo_ip`;
 /*!50001 DROP VIEW IF EXISTS `v_geo_ip`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_geo_ip` (
-  `ip_start` tinyint NOT NULL,
-  `ip_end` tinyint NOT NULL,
-  `addr_type` tinyint NOT NULL,
-  `country` tinyint NOT NULL,
-  `stateprov` tinyint NOT NULL,
-  `city` tinyint NOT NULL,
-  `latitude` tinyint NOT NULL,
-  `longitude` tinyint NOT NULL,
-  `timezone_offset` tinyint NOT NULL,
-  `timezone_name` tinyint NOT NULL,
-  `isp_name` tinyint NOT NULL,
-  `connection_type` tinyint NOT NULL,
-  `organization_name` tinyint NOT NULL,
-  `ip_start_bin` tinyint NOT NULL,
-  `ip_end_bin` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_geo_ip` AS SELECT 
+ 1 AS `ip_start`,
+ 1 AS `ip_end`,
+ 1 AS `addr_type`,
+ 1 AS `country`,
+ 1 AS `stateprov`,
+ 1 AS `city`,
+ 1 AS `latitude`,
+ 1 AS `longitude`,
+ 1 AS `timezone_offset`,
+ 1 AS `timezone_name`,
+ 1 AS `isp_name`,
+ 1 AS `connection_type`,
+ 1 AS `organization_name`,
+ 1 AS `ip_start_bin`,
+ 1 AS `ip_end_bin`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_ls_links`
+-- Temporary view structure for view `v_ls_links`
 --
 
 DROP TABLE IF EXISTS `v_ls_links`;
 /*!50001 DROP VIEW IF EXISTS `v_ls_links`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_ls_links` (
-  `Local_Router_Name` tinyint NOT NULL,
-  `Remote_Router_Name` tinyint NOT NULL,
-  `Local_IGP_RouterId` tinyint NOT NULL,
-  `Local_RouterId` tinyint NOT NULL,
-  `Remote_IGP_RouterId` tinyint NOT NULL,
-  `Remote_RouterId` tinyint NOT NULL,
-  `bgpls_id` tinyint NOT NULL,
-  `AreaId` tinyint NOT NULL,
-  `MT_ID` tinyint NOT NULL,
-  `InterfaceIP` tinyint NOT NULL,
-  `NeighborIP` tinyint NOT NULL,
-  `isIPv4` tinyint NOT NULL,
-  `protocol` tinyint NOT NULL,
-  `igp_metric` tinyint NOT NULL,
-  `local_link_id` tinyint NOT NULL,
-  `remote_link_id` tinyint NOT NULL,
-  `admin_group` tinyint NOT NULL,
-  `max_link_bw` tinyint NOT NULL,
-  `max_resv_bw` tinyint NOT NULL,
-  `unreserved_bw` tinyint NOT NULL,
-  `te_def_metric` tinyint NOT NULL,
-  `mpls_proto_mask` tinyint NOT NULL,
-  `srlg` tinyint NOT NULL,
-  `name` tinyint NOT NULL,
-  `timestamp` tinyint NOT NULL,
-  `local_node_hash_id` tinyint NOT NULL,
-  `remote_node_hash_id` tinyint NOT NULL,
-  `localn_igp_router_id_bin` tinyint NOT NULL,
-  `remoten_igp_router_id_bin` tinyint NOT NULL,
-  `path_attr_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_ls_links` AS SELECT 
+ 1 AS `Local_Router_Name`,
+ 1 AS `Remote_Router_Name`,
+ 1 AS `Local_IGP_RouterId`,
+ 1 AS `Local_RouterId`,
+ 1 AS `Remote_IGP_RouterId`,
+ 1 AS `Remote_RouterId`,
+ 1 AS `bgpls_id`,
+ 1 AS `AreaId`,
+ 1 AS `MT_ID`,
+ 1 AS `InterfaceIP`,
+ 1 AS `NeighborIP`,
+ 1 AS `isIPv4`,
+ 1 AS `protocol`,
+ 1 AS `igp_metric`,
+ 1 AS `local_link_id`,
+ 1 AS `remote_link_id`,
+ 1 AS `admin_group`,
+ 1 AS `max_link_bw`,
+ 1 AS `max_resv_bw`,
+ 1 AS `unreserved_bw`,
+ 1 AS `te_def_metric`,
+ 1 AS `mpls_proto_mask`,
+ 1 AS `srlg`,
+ 1 AS `name`,
+ 1 AS `timestamp`,
+ 1 AS `local_node_hash_id`,
+ 1 AS `remote_node_hash_id`,
+ 1 AS `localn_igp_router_id_bin`,
+ 1 AS `remoten_igp_router_id_bin`,
+ 1 AS `path_attr_hash_id`,
+ 1 AS `peer_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_ls_nodes`
+-- Temporary view structure for view `v_ls_nodes`
 --
 
 DROP TABLE IF EXISTS `v_ls_nodes`;
 /*!50001 DROP VIEW IF EXISTS `v_ls_nodes`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_ls_nodes` (
-  `RouterName` tinyint NOT NULL,
-  `RouterIP` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `PeerIP` tinyint NOT NULL,
-  `IGP_RouterId` tinyint NOT NULL,
-  `NodeName` tinyint NOT NULL,
-  `RouterId` tinyint NOT NULL,
-  `id` tinyint NOT NULL,
-  `bgpls_id` tinyint NOT NULL,
-  `OspfAreaId` tinyint NOT NULL,
-  `ISISAreaId` tinyint NOT NULL,
-  `protocol` tinyint NOT NULL,
-  `flags` tinyint NOT NULL,
-  `timestamp` tinyint NOT NULL,
-  `asn` tinyint NOT NULL,
-  `AS_Path` tinyint NOT NULL,
-  `LocalPref` tinyint NOT NULL,
-  `MED` tinyint NOT NULL,
-  `NH` tinyint NOT NULL,
-  `mt_id` tinyint NOT NULL,
-  `hash_id` tinyint NOT NULL,
-  `path_attr_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_ls_nodes` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `RouterIP`,
+ 1 AS `PeerName`,
+ 1 AS `PeerIP`,
+ 1 AS `IGP_RouterId`,
+ 1 AS `NodeName`,
+ 1 AS `RouterId`,
+ 1 AS `id`,
+ 1 AS `bgpls_id`,
+ 1 AS `OspfAreaId`,
+ 1 AS `ISISAreaId`,
+ 1 AS `protocol`,
+ 1 AS `flags`,
+ 1 AS `timestamp`,
+ 1 AS `asn`,
+ 1 AS `AS_Path`,
+ 1 AS `LocalPref`,
+ 1 AS `MED`,
+ 1 AS `NH`,
+ 1 AS `mt_id`,
+ 1 AS `hash_id`,
+ 1 AS `path_attr_hash_id`,
+ 1 AS `peer_hash_id`,
+ 1 AS `router_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_ls_prefixes`
+-- Temporary view structure for view `v_ls_prefixes`
 --
 
 DROP TABLE IF EXISTS `v_ls_prefixes`;
 /*!50001 DROP VIEW IF EXISTS `v_ls_prefixes`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_ls_prefixes` (
-  `Local_Router_Name` tinyint NOT NULL,
-  `Local_IGP_RouterId` tinyint NOT NULL,
-  `Local_RouterId` tinyint NOT NULL,
-  `id` tinyint NOT NULL,
-  `mt_id` tinyint NOT NULL,
-  `Prefix` tinyint NOT NULL,
-  `prefix_len` tinyint NOT NULL,
-  `ospf_route_type` tinyint NOT NULL,
-  `metric` tinyint NOT NULL,
-  `protocol` tinyint NOT NULL,
-  `timestamp` tinyint NOT NULL,
-  `prefix_bcast_bin` tinyint NOT NULL,
-  `prefix_bin` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_ls_prefixes` AS SELECT 
+ 1 AS `Local_Router_Name`,
+ 1 AS `Local_IGP_RouterId`,
+ 1 AS `Local_RouterId`,
+ 1 AS `id`,
+ 1 AS `mt_id`,
+ 1 AS `Prefix`,
+ 1 AS `prefix_len`,
+ 1 AS `ospf_route_type`,
+ 1 AS `metric`,
+ 1 AS `protocol`,
+ 1 AS `timestamp`,
+ 1 AS `prefix_bcast_bin`,
+ 1 AS `prefix_bin`,
+ 1 AS `peer_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_peer_prefix_report`
+-- Temporary view structure for view `v_peer_prefix_report`
 --
 
 DROP TABLE IF EXISTS `v_peer_prefix_report`;
 /*!50001 DROP VIEW IF EXISTS `v_peer_prefix_report`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_peer_prefix_report` (
-  `RouterName` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `TS` tinyint NOT NULL,
-  `Rejected` tinyint NOT NULL,
-  `ConfedLoop` tinyint NOT NULL,
-  `ASLoop` tinyint NOT NULL,
-  `InvalidClusterList` tinyint NOT NULL,
-  `InvalidOriginator` tinyint NOT NULL,
-  `KnownPrefix_DUP` tinyint NOT NULL,
-  `KnownWithdraw_DUP` tinyint NOT NULL,
-  `Pre_RIB` tinyint NOT NULL,
-  `Post_RIB` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_peer_prefix_report` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `PeerName`,
+ 1 AS `TS`,
+ 1 AS `Rejected`,
+ 1 AS `ConfedLoop`,
+ 1 AS `ASLoop`,
+ 1 AS `InvalidClusterList`,
+ 1 AS `InvalidOriginator`,
+ 1 AS `KnownPrefix_DUP`,
+ 1 AS `KnownWithdraw_DUP`,
+ 1 AS `Pre_RIB`,
+ 1 AS `Post_RIB`,
+ 1 AS `router_hash_id`,
+ 1 AS `peer_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_peer_prefix_report_last`
+-- Temporary view structure for view `v_peer_prefix_report_last`
 --
 
 DROP TABLE IF EXISTS `v_peer_prefix_report_last`;
 /*!50001 DROP VIEW IF EXISTS `v_peer_prefix_report_last`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_peer_prefix_report_last` (
-  `RouterName` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `TS` tinyint NOT NULL,
-  `Rejected` tinyint NOT NULL,
-  `ConfedLoop` tinyint NOT NULL,
-  `ASLoop` tinyint NOT NULL,
-  `InvalidClusterList` tinyint NOT NULL,
-  `InvalidOriginator` tinyint NOT NULL,
-  `KnownPrefix_DUP` tinyint NOT NULL,
-  `KnownWithdraw_DUP` tinyint NOT NULL,
-  `Pre_RIB` tinyint NOT NULL,
-  `Post_RIB` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_peer_prefix_report_last` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `PeerName`,
+ 1 AS `TS`,
+ 1 AS `Rejected`,
+ 1 AS `ConfedLoop`,
+ 1 AS `ASLoop`,
+ 1 AS `InvalidClusterList`,
+ 1 AS `InvalidOriginator`,
+ 1 AS `KnownPrefix_DUP`,
+ 1 AS `KnownWithdraw_DUP`,
+ 1 AS `Pre_RIB`,
+ 1 AS `Post_RIB`,
+ 1 AS `router_hash_id`,
+ 1 AS `peer_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_peer_prefix_report_last_id`
+-- Temporary view structure for view `v_peer_prefix_report_last_id`
 --
 
 DROP TABLE IF EXISTS `v_peer_prefix_report_last_id`;
 /*!50001 DROP VIEW IF EXISTS `v_peer_prefix_report_last_id`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_peer_prefix_report_last_id` (
-  `id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_peer_prefix_report_last_id` AS SELECT 
+ 1 AS `id`,
+ 1 AS `peer_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_peers`
+-- Temporary view structure for view `v_peers`
 --
 
 DROP TABLE IF EXISTS `v_peers`;
 /*!50001 DROP VIEW IF EXISTS `v_peers`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_peers` (
-  `RouterName` tinyint NOT NULL,
-  `RouterIP` tinyint NOT NULL,
-  `LocalIP` tinyint NOT NULL,
-  `LocalPort` tinyint NOT NULL,
-  `LocalASN` tinyint NOT NULL,
-  `LocalBGPId` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `PeerIP` tinyint NOT NULL,
-  `PeerPort` tinyint NOT NULL,
-  `PeerASN` tinyint NOT NULL,
-  `PeerBGPId` tinyint NOT NULL,
-  `LocalHoldTime` tinyint NOT NULL,
-  `PeerHoldTime` tinyint NOT NULL,
-  `isUp` tinyint NOT NULL,
-  `isBMPConnected` tinyint NOT NULL,
-  `isPeerIPv4` tinyint NOT NULL,
-  `isPeerVPN` tinyint NOT NULL,
-  `isPrePolicy` tinyint NOT NULL,
-  `LastModified` tinyint NOT NULL,
-  `LastBMPReasonCode` tinyint NOT NULL,
-  `LastDownCode` tinyint NOT NULL,
-  `LastdownSubCode` tinyint NOT NULL,
-  `LastDownMessage` tinyint NOT NULL,
-  `LastDownTimestamp` tinyint NOT NULL,
-  `SentCapabilities` tinyint NOT NULL,
-  `RecvCapabilities` tinyint NOT NULL,
-  `as_name` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL,
-  `geo_ip_start` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_peers` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `RouterIP`,
+ 1 AS `LocalIP`,
+ 1 AS `LocalPort`,
+ 1 AS `LocalASN`,
+ 1 AS `LocalBGPId`,
+ 1 AS `PeerName`,
+ 1 AS `PeerIP`,
+ 1 AS `PeerPort`,
+ 1 AS `PeerASN`,
+ 1 AS `PeerBGPId`,
+ 1 AS `LocalHoldTime`,
+ 1 AS `PeerHoldTime`,
+ 1 AS `isUp`,
+ 1 AS `isBMPConnected`,
+ 1 AS `isPeerIPv4`,
+ 1 AS `isPeerVPN`,
+ 1 AS `isPrePolicy`,
+ 1 AS `LastModified`,
+ 1 AS `LastBMPReasonCode`,
+ 1 AS `LastDownCode`,
+ 1 AS `LastdownSubCode`,
+ 1 AS `LastDownMessage`,
+ 1 AS `LastDownTimestamp`,
+ 1 AS `SentCapabilities`,
+ 1 AS `RecvCapabilities`,
+ 1 AS `as_name`,
+ 1 AS `peer_hash_id`,
+ 1 AS `router_hash_id`,
+ 1 AS `geo_ip_start`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_routes`
+-- Temporary view structure for view `v_routes`
 --
 
 DROP TABLE IF EXISTS `v_routes`;
 /*!50001 DROP VIEW IF EXISTS `v_routes`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_routes` (
-  `RouterName` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `Prefix` tinyint NOT NULL,
-  `PrefixLen` tinyint NOT NULL,
-  `Origin` tinyint NOT NULL,
-  `Origin_AS` tinyint NOT NULL,
-  `MED` tinyint NOT NULL,
-  `LocalPref` tinyint NOT NULL,
-  `NH` tinyint NOT NULL,
-  `AS_Path` tinyint NOT NULL,
-  `ASPath_Count` tinyint NOT NULL,
-  `Communities` tinyint NOT NULL,
-  `ExtCommunities` tinyint NOT NULL,
-  `ClusterList` tinyint NOT NULL,
-  `Aggregator` tinyint NOT NULL,
-  `PeerAddress` tinyint NOT NULL,
-  `PeerASN` tinyint NOT NULL,
-  `isIPv4` tinyint NOT NULL,
-  `isPeerIPv4` tinyint NOT NULL,
-  `isPeerVPN` tinyint NOT NULL,
-  `LastModified` tinyint NOT NULL,
-  `DBLastModified` tinyint NOT NULL,
-  `prefix_bin` tinyint NOT NULL,
-  `rib_hash_id` tinyint NOT NULL,
-  `path_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL,
-  `isWithdrawn` tinyint NOT NULL,
-  `prefix_bits` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_routes` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `PeerName`,
+ 1 AS `Prefix`,
+ 1 AS `PrefixLen`,
+ 1 AS `Origin`,
+ 1 AS `Origin_AS`,
+ 1 AS `MED`,
+ 1 AS `LocalPref`,
+ 1 AS `NH`,
+ 1 AS `AS_Path`,
+ 1 AS `ASPath_Count`,
+ 1 AS `Communities`,
+ 1 AS `ExtCommunities`,
+ 1 AS `ClusterList`,
+ 1 AS `Aggregator`,
+ 1 AS `PeerAddress`,
+ 1 AS `PeerASN`,
+ 1 AS `isIPv4`,
+ 1 AS `isPeerIPv4`,
+ 1 AS `isPeerVPN`,
+ 1 AS `LastModified`,
+ 1 AS `DBLastModified`,
+ 1 AS `prefix_bin`,
+ 1 AS `rib_hash_id`,
+ 1 AS `path_hash_id`,
+ 1 AS `peer_hash_id`,
+ 1 AS `router_hash_id`,
+ 1 AS `isWithdrawn`,
+ 1 AS `prefix_bits`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_routes_history`
+-- Temporary view structure for view `v_routes_history`
 --
 
 DROP TABLE IF EXISTS `v_routes_history`;
 /*!50001 DROP VIEW IF EXISTS `v_routes_history`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_routes_history` (
-  `RouterName` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `Prefix` tinyint NOT NULL,
-  `PrefixLen` tinyint NOT NULL,
-  `Origin` tinyint NOT NULL,
-  `Origin_AS` tinyint NOT NULL,
-  `MED` tinyint NOT NULL,
-  `LocalPref` tinyint NOT NULL,
-  `NH` tinyint NOT NULL,
-  `AS_Path` tinyint NOT NULL,
-  `ASPath_Count` tinyint NOT NULL,
-  `Communities` tinyint NOT NULL,
-  `ExtCommunities` tinyint NOT NULL,
-  `ClusterList` tinyint NOT NULL,
-  `Aggregator` tinyint NOT NULL,
-  `PeerAddress` tinyint NOT NULL,
-  `PeerASN` tinyint NOT NULL,
-  `isPeerIPv4` tinyint NOT NULL,
-  `isPeerVPN` tinyint NOT NULL,
-  `id` tinyint NOT NULL,
-  `LastModified` tinyint NOT NULL,
-  `path_attr_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_routes_history` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `PeerName`,
+ 1 AS `Prefix`,
+ 1 AS `PrefixLen`,
+ 1 AS `Origin`,
+ 1 AS `Origin_AS`,
+ 1 AS `MED`,
+ 1 AS `LocalPref`,
+ 1 AS `NH`,
+ 1 AS `AS_Path`,
+ 1 AS `ASPath_Count`,
+ 1 AS `Communities`,
+ 1 AS `ExtCommunities`,
+ 1 AS `ClusterList`,
+ 1 AS `Aggregator`,
+ 1 AS `PeerAddress`,
+ 1 AS `PeerASN`,
+ 1 AS `isPeerIPv4`,
+ 1 AS `isPeerVPN`,
+ 1 AS `id`,
+ 1 AS `LastModified`,
+ 1 AS `path_attr_hash_id`,
+ 1 AS `peer_hash_id`,
+ 1 AS `router_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
--- Temporary table structure for view `v_routes_withdraws`
+-- Temporary view structure for view `v_routes_withdraws`
 --
 
 DROP TABLE IF EXISTS `v_routes_withdraws`;
 /*!50001 DROP VIEW IF EXISTS `v_routes_withdraws`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_routes_withdraws` (
-  `RouterName` tinyint NOT NULL,
-  `PeerName` tinyint NOT NULL,
-  `Prefix` tinyint NOT NULL,
-  `PrefixLen` tinyint NOT NULL,
-  `Origin` tinyint NOT NULL,
-  `Origin_AS` tinyint NOT NULL,
-  `MED` tinyint NOT NULL,
-  `LocalPref` tinyint NOT NULL,
-  `NH` tinyint NOT NULL,
-  `AS_Path` tinyint NOT NULL,
-  `ASPath_Count` tinyint NOT NULL,
-  `Communities` tinyint NOT NULL,
-  `ExtCommunities` tinyint NOT NULL,
-  `ClusterList` tinyint NOT NULL,
-  `Aggregator` tinyint NOT NULL,
-  `PeerAddress` tinyint NOT NULL,
-  `PeerASN` tinyint NOT NULL,
-  `isPeerIPv4` tinyint NOT NULL,
-  `isPeerVPN` tinyint NOT NULL,
-  `id` tinyint NOT NULL,
-  `LastModified` tinyint NOT NULL,
-  `path_attr_hash_id` tinyint NOT NULL,
-  `peer_hash_id` tinyint NOT NULL,
-  `router_hash_id` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_routes_withdraws` AS SELECT 
+ 1 AS `RouterName`,
+ 1 AS `PeerName`,
+ 1 AS `Prefix`,
+ 1 AS `PrefixLen`,
+ 1 AS `Origin`,
+ 1 AS `Origin_AS`,
+ 1 AS `MED`,
+ 1 AS `LocalPref`,
+ 1 AS `NH`,
+ 1 AS `AS_Path`,
+ 1 AS `ASPath_Count`,
+ 1 AS `Communities`,
+ 1 AS `ExtCommunities`,
+ 1 AS `ClusterList`,
+ 1 AS `Aggregator`,
+ 1 AS `PeerAddress`,
+ 1 AS `PeerASN`,
+ 1 AS `isPeerIPv4`,
+ 1 AS `isPeerVPN`,
+ 1 AS `id`,
+ 1 AS `LastModified`,
+ 1 AS `path_attr_hash_id`,
+ 1 AS `peer_hash_id`,
+ 1 AS `router_hash_id`*/;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -1251,25 +1188,14 @@ CREATE TABLE `withdrawn_log` (
 /*!50500 PARTITION BY RANGE  COLUMNS(`timestamp`)
 SUBPARTITION BY KEY (peer_hash_id)
 SUBPARTITIONS 32
-(PARTITION p2016_01 VALUES LESS THAN ('2016-02-01') ENGINE = InnoDB,
- PARTITION p2016_02 VALUES LESS THAN ('2016-03-01') ENGINE = InnoDB,
- PARTITION p2016_03 VALUES LESS THAN ('2016-04-01') ENGINE = InnoDB,
- PARTITION p2016_04 VALUES LESS THAN ('2016-05-01') ENGINE = InnoDB,
- PARTITION p2016_05 VALUES LESS THAN ('2016-06-01') ENGINE = InnoDB,
- PARTITION p2016_06 VALUES LESS THAN ('2016-07-01') ENGINE = InnoDB,
- PARTITION p2016_07 VALUES LESS THAN ('2016-08-01') ENGINE = InnoDB,
- PARTITION p2016_08 VALUES LESS THAN ('2016-09-01') ENGINE = InnoDB,
- PARTITION p2016_09 VALUES LESS THAN ('2016-10-01') ENGINE = InnoDB,
- PARTITION p2016_10 VALUES LESS THAN ('2016-11-01') ENGINE = InnoDB,
- PARTITION p2016_11 VALUES LESS THAN ('2016-12-01') ENGINE = InnoDB,
- PARTITION p2016_12 VALUES LESS THAN ('2017-01-01') ENGINE = InnoDB,
- PARTITION p2017_01 VALUES LESS THAN ('2017-02-01') ENGINE = InnoDB,
- PARTITION p2017_02 VALUES LESS THAN ('2017-03-01') ENGINE = InnoDB,
- PARTITION p2017_03 VALUES LESS THAN ('2017-04-01') ENGINE = InnoDB,
- PARTITION p2017_04 VALUES LESS THAN ('2017-05-01') ENGINE = InnoDB,
- PARTITION p2017_05 VALUES LESS THAN ('2017-06-01') ENGINE = InnoDB,
- PARTITION p2017_06 VALUES LESS THAN ('2017-07-01') ENGINE = InnoDB,
- PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
+(PARTITION p2015_06 VALUES LESS THAN ('2015-07-01') ENGINE = InnoDB,
+ PARTITION p2015_07 VALUES LESS THAN ('2015-08-01') ENGINE = InnoDB,
+ PARTITION p2015_08 VALUES LESS THAN ('2015-09-01') ENGINE = InnoDB,
+ PARTITION p2015_09 VALUES LESS THAN ('2015-10-01') ENGINE = InnoDB,
+ PARTITION p2015_10 VALUES LESS THAN ('2015-11-01') ENGINE = InnoDB,
+ PARTITION p2015_11 VALUES LESS THAN ('2015-12-01') ENGINE = InnoDB,
+ PARTITION p2015_12 VALUES LESS THAN ('2016-01-01') ENGINE = InnoDB,
+ PARTITION p2016_01 VALUES LESS THAN ('2016-02-01') ENGINE = InnoDB,
  PARTITION pOther VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB) */;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1277,7 +1203,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `prefix_aspath`
 --
 
-/*!50001 DROP TABLE IF EXISTS `prefix_aspath`*/;
 /*!50001 DROP VIEW IF EXISTS `prefix_aspath`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1296,7 +1221,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_geo_ip`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_geo_ip`*/;
 /*!50001 DROP VIEW IF EXISTS `v_geo_ip`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1315,7 +1239,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_ls_links`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_ls_links`*/;
 /*!50001 DROP VIEW IF EXISTS `v_ls_links`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1324,7 +1247,7 @@ SUBPARTITIONS 32
 /*!50001 SET character_set_results     = utf8 */;
 /*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`openbmp`@`localhost` SQL SECURITY DEFINER */
+/*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
 /*!50001 VIEW `v_ls_links` AS select `localn`.`name` AS `Local_Router_Name`,`remoten`.`name` AS `Remote_Router_Name`,`localn`.`igp_router_id` AS `Local_IGP_RouterId`,`localn`.`router_id` AS `Local_RouterId`,`remoten`.`igp_router_id` AS `Remote_IGP_RouterId`,`remoten`.`router_id` AS `Remote_RouterId`,`localn`.`bgp_ls_id` AS `bgpls_id`,if((`ln`.`protocol` in ('OSPFv2','OSPFv3')),`localn`.`ospf_area_id`,`localn`.`isis_area_id`) AS `AreaId`,`ln`.`mt_id` AS `MT_ID`,`ln`.`interface_addr` AS `InterfaceIP`,`ln`.`neighbor_addr` AS `NeighborIP`,`ln`.`isIPv4` AS `isIPv4`,`ln`.`protocol` AS `protocol`,`ln`.`igp_metric` AS `igp_metric`,`ln`.`local_link_id` AS `local_link_id`,`ln`.`remote_link_id` AS `remote_link_id`,`ln`.`admin_group` AS `admin_group`,`ln`.`max_link_bw` AS `max_link_bw`,`ln`.`max_resv_bw` AS `max_resv_bw`,`ln`.`unreserved_bw` AS `unreserved_bw`,`ln`.`te_def_metric` AS `te_def_metric`,`ln`.`mpls_proto_mask` AS `mpls_proto_mask`,`ln`.`srlg` AS `srlg`,`ln`.`name` AS `name`,`ln`.`timestamp` AS `timestamp`,`ln`.`local_node_hash_id` AS `local_node_hash_id`,`ln`.`remote_node_hash_id` AS `remote_node_hash_id`,`localn`.`igp_router_id` AS `localn_igp_router_id_bin`,`remoten`.`igp_router_id` AS `remoten_igp_router_id_bin`,`ln`.`path_attr_hash_id` AS `path_attr_hash_id`,`ln`.`peer_hash_id` AS `peer_hash_id` from ((`ls_links` `ln` join `ls_nodes` `localn` on(((`ln`.`local_node_hash_id` = `localn`.`hash_id`) and (`ln`.`peer_hash_id` = `localn`.`peer_hash_id`)))) join `ls_nodes` `remoten` on(((`ln`.`remote_node_hash_id` = `remoten`.`hash_id`) and (`ln`.`peer_hash_id` = `remoten`.`peer_hash_id`)))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -1334,7 +1257,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_ls_nodes`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_ls_nodes`*/;
 /*!50001 DROP VIEW IF EXISTS `v_ls_nodes`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1343,8 +1265,8 @@ SUBPARTITIONS 32
 /*!50001 SET character_set_results     = utf8 */;
 /*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`openbmp`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_ls_nodes` AS select `r`.`name` AS `RouterName`,`r`.`ip_address` AS `RouterIP`,`p`.`name` AS `PeerName`,`p`.`peer_addr` AS `PeerIP`,`ls_nodes`.`igp_router_id` AS `IGP_RouterId`,`ls_nodes`.`name` AS `NodeName`,if((`ls_nodes`.`protocol` like 'OSPF%'),`ls_nodes`.`igp_router_id`,`ls_nodes`.`router_id`) AS `RouterId`,`ls_nodes`.`id` AS `id`,`ls_nodes`.`bgp_ls_id` AS `bgpls_id`,`ls_nodes`.`ospf_area_id` AS `OspfAreaId`,`ls_nodes`.`isis_area_id` AS `ISISAreaId`,`ls_nodes`.`protocol` AS `protocol`,`ls_nodes`.`flags` AS `flags`,`ls_nodes`.`timestamp` AS `timestamp`,`ls_nodes`.`asn` AS `asn`,`path_attrs`.`as_path` AS `AS_Path`,`path_attrs`.`local_pref` AS `LocalPref`,`path_attrs`.`med` AS `MED`,`path_attrs`.`next_hop` AS `NH`,`links`.`mt_id` AS `mt_id`,`ls_nodes`.`hash_id` AS `hash_id`,`ls_nodes`.`path_attr_hash_id` AS `path_attr_hash_id`,`ls_nodes`.`peer_hash_id` AS `peer_hash_id`,`r`.`hash_id` AS `router_hash_id` from ((((`ls_nodes` left join `path_attrs` on(((`ls_nodes`.`path_attr_hash_id` = `path_attrs`.`hash_id`) and (`ls_nodes`.`peer_hash_id` = `path_attrs`.`peer_hash_id`)))) join `ls_links` `links` on((`ls_nodes`.`hash_id` = `links`.`local_node_hash_id`))) join `bgp_peers` `p` on((`p`.`hash_id` = `ls_nodes`.`peer_hash_id`))) join `routers` `r` on((`p`.`router_hash_id` = `r`.`hash_id`))) where (not((`ls_nodes`.`igp_router_id` regexp '..[1-9A-F]00$'))) group by `ls_nodes`.`hash_id`,`links`.`mt_id` */;
+/*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
+/*!50001 VIEW `v_ls_nodes` AS select `r`.`name` AS `RouterName`,`r`.`ip_address` AS `RouterIP`,`p`.`name` AS `PeerName`,`p`.`peer_addr` AS `PeerIP`,`ls_nodes`.`igp_router_id` AS `IGP_RouterId`,`ls_nodes`.`name` AS `NodeName`,if((`ls_nodes`.`protocol` like 'OSPF%'),`ls_nodes`.`igp_router_id`,`ls_nodes`.`router_id`) AS `RouterId`,`ls_nodes`.`id` AS `id`,`ls_nodes`.`bgp_ls_id` AS `bgpls_id`,`ls_nodes`.`ospf_area_id` AS `OspfAreaId`,`ls_nodes`.`isis_area_id` AS `ISISAreaId`,`ls_nodes`.`protocol` AS `protocol`,`ls_nodes`.`flags` AS `flags`,`ls_nodes`.`timestamp` AS `timestamp`,`ls_nodes`.`asn` AS `asn`,`path_attrs`.`as_path` AS `AS_Path`,`path_attrs`.`local_pref` AS `LocalPref`,`path_attrs`.`med` AS `MED`,`path_attrs`.`next_hop` AS `NH`,`links`.`mt_id` AS `mt_id`,`ls_nodes`.`hash_id` AS `hash_id`,`ls_nodes`.`path_attr_hash_id` AS `path_attr_hash_id`,`ls_nodes`.`peer_hash_id` AS `peer_hash_id`,`r`.`hash_id` AS `router_hash_id` from ((((`ls_nodes` left join `path_attrs` on(((`ls_nodes`.`path_attr_hash_id` = `path_attrs`.`hash_id`) and (`ls_nodes`.`peer_hash_id` = `path_attrs`.`peer_hash_id`)))) join `ls_links` `links` on((`ls_nodes`.`hash_id` = `links`.`local_node_hash_id`))) join `bgp_peers` `p` on((`p`.`hash_id` = `ls_nodes`.`peer_hash_id`))) join `routers` `r` on((`p`.`router_hash_id` = `r`.`hash_id`))) group by `ls_nodes`.`hash_id`,`links`.`mt_id` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -1353,7 +1275,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_ls_prefixes`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_ls_prefixes`*/;
 /*!50001 DROP VIEW IF EXISTS `v_ls_prefixes`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1362,7 +1283,7 @@ SUBPARTITIONS 32
 /*!50001 SET character_set_results     = utf8 */;
 /*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`openbmp`@`localhost` SQL SECURITY DEFINER */
+/*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
 /*!50001 VIEW `v_ls_prefixes` AS select `localn`.`name` AS `Local_Router_Name`,`localn`.`igp_router_id` AS `Local_IGP_RouterId`,`localn`.`router_id` AS `Local_RouterId`,`lp`.`id` AS `id`,`lp`.`mt_id` AS `mt_id`,`lp`.`prefix` AS `Prefix`,`lp`.`prefix_len` AS `prefix_len`,`lp`.`ospf_route_type` AS `ospf_route_type`,`lp`.`metric` AS `metric`,`lp`.`protocol` AS `protocol`,`lp`.`timestamp` AS `timestamp`,`lp`.`prefix_bcast_bin` AS `prefix_bcast_bin`,`lp`.`prefix_bin` AS `prefix_bin`,`lp`.`peer_hash_id` AS `peer_hash_id` from (`ls_prefixes` `lp` join `ls_nodes` `localn` on((`lp`.`local_node_hash_id` = `localn`.`hash_id`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -1372,7 +1293,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_peer_prefix_report`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_peer_prefix_report`*/;
 /*!50001 DROP VIEW IF EXISTS `v_peer_prefix_report`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1391,7 +1311,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_peer_prefix_report_last`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_peer_prefix_report_last`*/;
 /*!50001 DROP VIEW IF EXISTS `v_peer_prefix_report_last`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1410,7 +1329,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_peer_prefix_report_last_id`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_peer_prefix_report_last_id`*/;
 /*!50001 DROP VIEW IF EXISTS `v_peer_prefix_report_last_id`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1429,7 +1347,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_peers`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_peers`*/;
 /*!50001 DROP VIEW IF EXISTS `v_peers`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1448,7 +1365,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_routes`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_routes`*/;
 /*!50001 DROP VIEW IF EXISTS `v_routes`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1467,7 +1383,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_routes_history`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_routes_history`*/;
 /*!50001 DROP VIEW IF EXISTS `v_routes_history`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1486,7 +1401,6 @@ SUBPARTITIONS 32
 -- Final view structure for view `v_routes_withdraws`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_routes_withdraws`*/;
 /*!50001 DROP VIEW IF EXISTS `v_routes_withdraws`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
@@ -1510,4 +1424,4 @@ SUBPARTITIONS 32
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2016-04-01 16:00:15
+-- Dump completed on 2016-01-19 19:09:03
