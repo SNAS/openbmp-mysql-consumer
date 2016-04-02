@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS %s (
     KEY idx_prefix (prefix),
     KEY idx_prefix_full (prefix,prefix_len),
     PRIMARY KEY (prefix, prefix_len, recv_origin_as)
-) Engine=MEMORY DEFAULT CHARSET=latin1 """ % TBL_RPKI_GEN_PREFIX_NAME
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 """ % TBL_RPKI_GEN_PREFIX_NAME
 
 QUERY_UPDATE_GEN_PREFIX_TABLE = """
 INSERT INTO %s (prefix,prefix_len,recv_origin_as,rpki_origin_as,irr_origin_as,irr_source)
