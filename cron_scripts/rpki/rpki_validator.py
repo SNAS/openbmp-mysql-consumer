@@ -65,8 +65,15 @@ MAX_BULK_INSERT_QUEUE_SIZE = 2000
 
 def load_export(db, server, api="export.json"):
     # get json data
-    json_response = json.load(urllib2.urlopen('http://' + server + '/' + api))
-    data = json_response['roas'] # json
+    data = []
+
+    try:
+        json_response = json.load(urllib2.urlopen('http://' + server + '/' + api))
+        data = json_response['roas'] # json
+
+    except urllib2.URLError as err:
+       print "Error connecting to rpki server: %r" % err
+       return
 
     query = 'REPLACE INTO rpki_validator (prefix, prefix_len, prefix_len_max, origin_as, timestamp) VALUES '
     counter = 0
