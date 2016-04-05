@@ -40,6 +40,7 @@ RR_DB_FTP['ripe_v6'] = {'site': 'ftp.ripe.net', 'path': '/ripe/dbase/split/', 'f
 WHOIS_ATTR_MAP = {
         # RADB
         'route': 'prefix',
+        'route6': 'prefix',
         'descr': 'descr',
         'origin': 'origin_as',
     }
@@ -130,7 +131,7 @@ def import_rr_db_file(db, source, db_filename):
                         # Strip off characters 'AS'
                         value = int(value[2:])
 
-                    elif (attr == 'route'):
+                    elif (attr == 'route' or attr == 'route6'):
                         # Extract out the prefix_len
                         a = value.split('/')
                         record['prefix_len'] = int(a[1])
