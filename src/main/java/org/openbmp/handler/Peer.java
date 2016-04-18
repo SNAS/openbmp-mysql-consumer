@@ -172,6 +172,17 @@ public class Peer extends Base {
             sb.append("UPDATE rib SET isWithdrawn = True WHERE peer_hash_id = '");
             sb.append(rowMap.get(i).get("hash"));
             sb.append("' AND isWithdrawn = False");
+
+            sb.append("; UPDATE ls_nodes SET isWithdrawn = True WHERE peer_hash_id = '");
+            sb.append(rowMap.get(i).get("hash"));
+            sb.append("' AND isWithdrawn = False");
+            sb.append("; UPDATE ls_links SET isWithdrawn = True WHERE peer_hash_id = '");
+            sb.append(rowMap.get(i).get("hash"));
+            sb.append("' AND isWithdrawn = False");
+            sb.append("; UPDATE ls_prefixes SET isWithdrawn = True WHERE peer_hash_id = '");
+            sb.append(rowMap.get(i).get("hash"));
+            sb.append("' AND isWithdrawn = False");
+
         }
 
         sb.append("SET @TRIGGER_DISABLED=FALSE; ");

@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS %s (
     KEY idx_prefix (prefix),
     KEY idx_prefix_full (prefix,prefix_len),
     PRIMARY KEY (prefix, prefix_len, recv_origin_as)
-) Engine=MEMORY DEFAULT CHARSET=latin1 """ % TBL_RPKI_GEN_PREFIX_NAME
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 """ % TBL_RPKI_GEN_PREFIX_NAME
 
 QUERY_UPDATE_GEN_PREFIX_TABLE = """
 INSERT INTO %s (prefix,prefix_len,recv_origin_as,rpki_origin_as,irr_origin_as,irr_source)
@@ -65,8 +65,15 @@ MAX_BULK_INSERT_QUEUE_SIZE = 2000
 
 def load_export(db, server, api="export.json"):
     # get json data
-    json_response = json.load(urllib2.urlopen('http://' + server + '/' + api))
-    data = json_response['roas'] # json
+    data = []
+
+    try:
+        json_response = json.load(urllib2.urlopen('http://' + server + '/' + api))
+        data = json_response['roas'] # json
+
+    except urllib2.URLError as err:
+       print "Error connecting to rpki server: %r" % err
+       return
 
     query = 'REPLACE INTO rpki_validator (prefix, prefix_len, prefix_len_max, origin_as, timestamp) VALUES '
     counter = 0
