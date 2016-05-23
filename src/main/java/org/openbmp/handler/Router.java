@@ -157,7 +157,13 @@ public class Router extends Base {
                 //    so add the router if it doesn't exist already
                 if (! routerMap.containsKey((String)rowMap.get(i).get("ip_address")) ) {
                     routerMap.put((String)rowMap.get(i).get("ip_address"), 1);
+
+                } else {
+                    // Increment the entry for the new connection
+                    routerMap.put((String)rowMap.get(i).get("ip_address"),
+                            routerMap.get((String)rowMap.get(i).get("ip_address")) + 1 );
                 }
+
             }
 
             else if (((String) rowMap.get(i).get("action")).equalsIgnoreCase("term")) {

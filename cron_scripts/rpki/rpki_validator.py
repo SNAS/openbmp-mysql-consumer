@@ -217,11 +217,6 @@ def main():
     db.queryNoResults("DELETE FROM %s WHERE timestamp < date_sub(current_timestamp, interval 1 hour)" % TBL_RPKI_VALIDATOR_NAME)
     print "purged old roas"
 
-    # Purge generated prefix validation entries that are no longer active
-    db.queryNoResults("DELETE g FROM %s g LEFT JOIN rib ON "
-                      "(g.prefix = rib.prefix_bin AND g.prefix_len = rib.prefix_len AND rib.isWithdrawn = False)"
-                      " WHERE rib.prefix is null" % TBL_RPKI_GEN_PREFIX_NAME )
-    print "Purged prefix validation table"
 
     db.queryNoResults(QUERY_UPDATE_GEN_PREFIX_TABLE)
 

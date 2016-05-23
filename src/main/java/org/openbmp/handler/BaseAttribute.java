@@ -136,10 +136,10 @@ public class BaseAttribute extends Base {
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genAsPathAnalysisStatement() {
-        String [] stmt = {" INSERT INTO as_path_analysis (asn,asn_left,asn_right,path_attr_hash_id, peer_hash_id)" +
-                                    " VALUES ",
+        String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right,path_attr_hash_id, peer_hash_id)" +
+                                    " VALUES ", "" };
 
-                          " ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
+                          //" ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
         return stmt;
     }
 
@@ -232,10 +232,10 @@ public class BaseAttribute extends Base {
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genCommunityAnalysisStatement() {
-        String [] stmt = {" INSERT INTO community_analysis (community,part1,part2,path_attr_hash_id, peer_hash_id)" +
-                " VALUES ",
+        String [] stmt = {" INSERT IGNORE INTO community_analysis (community,part1,part2,path_attr_hash_id, peer_hash_id)" +
+                " VALUES ", "" };
 
-                " ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
+                //" ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
         return stmt;
     }
 

@@ -14,6 +14,7 @@ import kafka.message.MessageAndMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openbmp.handler.*;
+
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
@@ -34,6 +35,7 @@ public class MySQLConsumer implements Runnable {
     private MySQLWriterThread writerThread;
     private BigInteger messageCount;
     private Long last_collector_msg_time;
+
 
     private Map<String,Map<String, Integer>> routerConMap;
 
@@ -60,6 +62,7 @@ public class MySQLConsumer implements Runnable {
      */
     public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics,
                          Map<String,Map<String, Integer>> routerConMap) {
+
         m_threadNumber = threadNumber;
         m_stream = stream;
         m_topics = topics;

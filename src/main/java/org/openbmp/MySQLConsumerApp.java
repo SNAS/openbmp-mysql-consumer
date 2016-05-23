@@ -47,6 +47,10 @@ public class MySQLConsumerApp
      */
     private Map<String,Map<String, Integer>> routerConMap;
 
+    /**
+     *
+     * @param cfg       Configuration - e.g. DB credentials
+     */
     public MySQLConsumerApp(Config cfg) {
 
         this.cfg = cfg;

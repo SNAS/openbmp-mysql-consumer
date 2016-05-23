@@ -15,6 +15,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -26,18 +28,20 @@ import org.apache.logging.log4j.Logger;
  *      the FIFO queue.
  */
 public class MySQLWriterThread implements  Runnable {
-    private final Integer MAX_BULK_STATEMENTS = 5000;           // Maximum number of bulk values/multi-statements to allow
-    private final Integer MAX_BULK_WAIT_MS = 100;               // Maximum milliseconds to wait for bulk messages
+    private final Integer MAX_BULK_STATEMENTS = 2500;           // Maximum number of bulk values/multi-statements to allow
+    private final Integer MAX_BULK_WAIT_MS = 75;                // Maximum milliseconds to wait for bulk messages
     private final Integer MAX_MYSQL_RETRIES = 10;               // Maximum MySQL retires
 
     private static final Logger logger = LogManager.getFormatterLogger(MySQLWriterThread.class.getName());
 
-    private final Object lock = new Object();                   // Lock for thread
     private Connection con;                                     // MySQL connection
     private Boolean dbConnected;                                // Indicates if DB is connected or not
     private Config cfg;
     private BlockingQueue<Map<String, String>> writerQueue;     // Reference to the writer FIFO queue
     private boolean run;
+
+    private final Object lock = new Object();                   // Lock for thread
+    private final Lock globalLock;                              // Global/sync globalLock between writers
 
     /**
      * Constructor
@@ -46,6 +50,8 @@ public class MySQLWriterThread implements  Runnable {
      * @param queue     FIFO queue to read from
      */
     public MySQLWriterThread(Config cfg, BlockingQueue queue) {
+        globalLock = new ReentrantLock();
+
         this.cfg = cfg;
         writerQueue = queue;
         run = true;
@@ -101,6 +107,7 @@ public class MySQLWriterThread implements  Runnable {
             try {
                 Statement stmt = con.createStatement();
                 logger.trace("SQL Query retry = %d: %s", i, query);
+
                 stmt.executeUpdate(query);
                 i = retries;
                 success = Boolean.TRUE;
@@ -159,6 +166,10 @@ public class MySQLWriterThread implements  Runnable {
                     if (bulk_count > 0) {
                         logger.debug("Max reached, doing insert: wait_ms=%d bulk_count=%d", cur_time - prev_time, bulk_count);
 
+                        // Block if another thread is running a sync query
+                        globalLock.lock();
+                        globalLock.unlock();
+
                         StringBuilder query = new StringBuilder();
                         // Loop through queries and add them as multi-statements
                         for (Map.Entry<String, String> entry : bulk_query.entrySet()) {
@@ -208,10 +219,23 @@ public class MySQLWriterThread implements  Runnable {
                         } else {
                             bulk_query.put(key, cur_query.get("value"));
                         }
+
+                        if (cur_query.get("value").length() > 100000) {
+                            bulk_count = MAX_BULK_STATEMENTS;
+                            logger.debug("value length is: %d", cur_query.get("value").length());
+                        }
                     }
                     else if (cur_query.containsKey("query")) {  // Null prefix means run query now, not in bulk
                         logger.debug("Non bulk query");
-                        mysqlQueryUpdate(cur_query.get("query"), 3);
+
+                        // Sync query - globalLock other threads so that this completes in order
+                        globalLock.lock();
+                        try {
+                            mysqlQueryUpdate(cur_query.get("query"), 3);
+
+                        } finally {
+                            globalLock.unlock();
+                        }
                     }
                 }
             }
