@@ -2,7 +2,7 @@
 --
 -- Host: 127.0.0.1    Database: openBMP
 -- ------------------------------------------------------
--- Server version	10.0.24-MariaDB-1~trusty
+-- Server version	10.0.25-MariaDB-1~trusty
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -878,6 +878,47 @@ CREATE TABLE `users` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Temporary table structure for view `v_all_routes`
+--
+
+DROP TABLE IF EXISTS `v_all_routes`;
+/*!50001 DROP VIEW IF EXISTS `v_all_routes`*/;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8;
+/*!50001 CREATE TABLE `v_all_routes` (
+  `RouterName` tinyint NOT NULL,
+  `PeerName` tinyint NOT NULL,
+  `Prefix` tinyint NOT NULL,
+  `PrefixLen` tinyint NOT NULL,
+  `Origin` tinyint NOT NULL,
+  `Origin_AS` tinyint NOT NULL,
+  `MED` tinyint NOT NULL,
+  `LocalPref` tinyint NOT NULL,
+  `NH` tinyint NOT NULL,
+  `AS_Path` tinyint NOT NULL,
+  `ASPath_Count` tinyint NOT NULL,
+  `Communities` tinyint NOT NULL,
+  `ExtCommunities` tinyint NOT NULL,
+  `ClusterList` tinyint NOT NULL,
+  `Aggregator` tinyint NOT NULL,
+  `PeerAddress` tinyint NOT NULL,
+  `PeerASN` tinyint NOT NULL,
+  `isIPv4` tinyint NOT NULL,
+  `isPeerIPv4` tinyint NOT NULL,
+  `isPeerVPN` tinyint NOT NULL,
+  `LastModified` tinyint NOT NULL,
+  `DBLastModified` tinyint NOT NULL,
+  `prefix_bin` tinyint NOT NULL,
+  `rib_hash_id` tinyint NOT NULL,
+  `path_hash_id` tinyint NOT NULL,
+  `peer_hash_id` tinyint NOT NULL,
+  `router_hash_id` tinyint NOT NULL,
+  `isWithdrawn` tinyint NOT NULL,
+  `prefix_bits` tinyint NOT NULL
+) ENGINE=MyISAM */;
+SET character_set_client = @saved_cs_client;
+
+--
 -- Temporary table structure for view `v_geo_ip`
 --
 
@@ -1294,6 +1335,25 @@ SUBPARTITIONS 32
 /*!50001 SET collation_connection      = @saved_col_connection */;
 
 --
+-- Final view structure for view `v_all_routes`
+--
+
+/*!50001 DROP TABLE IF EXISTS `v_all_routes`*/;
+/*!50001 DROP VIEW IF EXISTS `v_all_routes`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
+/*!50001 VIEW `v_all_routes` AS select if((length(`rtr`.`name`) > 0),`rtr`.`name`,`rtr`.`ip_address`) AS `RouterName`,if((length(`p`.`name`) > 0),`p`.`name`,`p`.`peer_addr`) AS `PeerName`,`r`.`prefix` AS `Prefix`,`r`.`prefix_len` AS `PrefixLen`,`path`.`origin` AS `Origin`,`r`.`origin_as` AS `Origin_AS`,`path`.`med` AS `MED`,`path`.`local_pref` AS `LocalPref`,`path`.`next_hop` AS `NH`,`path`.`as_path` AS `AS_Path`,`path`.`as_path_count` AS `ASPath_Count`,`path`.`community_list` AS `Communities`,`path`.`ext_community_list` AS `ExtCommunities`,`path`.`cluster_list` AS `ClusterList`,`path`.`aggregator` AS `Aggregator`,`p`.`peer_addr` AS `PeerAddress`,`p`.`peer_as` AS `PeerASN`,`r`.`isIPv4` AS `isIPv4`,`p`.`isIPv4` AS `isPeerIPv4`,`p`.`isL3VPNpeer` AS `isPeerVPN`,`r`.`timestamp` AS `LastModified`,`r`.`db_timestamp` AS `DBLastModified`,`r`.`prefix_bin` AS `prefix_bin`,`r`.`hash_id` AS `rib_hash_id`,`r`.`path_attr_hash_id` AS `path_hash_id`,`r`.`peer_hash_id` AS `peer_hash_id`,`rtr`.`hash_id` AS `router_hash_id`,`r`.`isWithdrawn` AS `isWithdrawn`,`r`.`prefix_bits` AS `prefix_bits` from (((`bgp_peers` `p` join `rib` `r` on((`r`.`peer_hash_id` = `p`.`hash_id`))) join `path_attrs` `path` on(((`path`.`hash_id` = `r`.`path_attr_hash_id`) and (`path`.`peer_hash_id` = `r`.`peer_hash_id`)))) join `routers` `rtr` on((`p`.`router_hash_id` = `rtr`.`hash_id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
 -- Final view structure for view `v_geo_ip`
 --
 
@@ -1511,4 +1571,4 @@ SUBPARTITIONS 32
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2016-05-23 21:20:47
+-- Dump completed on 2016-05-24 14:27:38
