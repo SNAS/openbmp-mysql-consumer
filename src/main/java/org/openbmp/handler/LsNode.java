@@ -62,7 +62,7 @@ public class LsNode extends Base {
                 new ParseNullAsEmpty(),         // router_id
                 new ParseNullAsEmpty(),         // routing_id
                 new ParseLongEmptyAsZero(),     // ls_id
-                new ParseLongEmptyAsZero(),     // mt_id
+                new ParseNullAsEmpty(),         // mt_id
                 new ParseNullAsEmpty(),         // ospf_area_id
                 new ParseNullAsEmpty(),         // isis_area_id
                 new ParseNullAsEmpty(),         // protocol
@@ -86,7 +86,7 @@ public class LsNode extends Base {
      */
     public String[] genInsertStatement() {
         String [] stmt = { " REPLACE  INTO ls_nodes (hash_id,peer_hash_id, path_attr_hash_id,asn,id,bgp_ls_id,igp_router_id," +
-                           "ospf_area_id,protocol,router_id,isis_area_id,flags,name,isWithdrawn,timestamp) VALUES ",
+                           "ospf_area_id,protocol,router_id,isis_area_id,flags,name,mt_ids,isWithdrawn,timestamp) VALUES ",
 
                            " " };
         return stmt;
@@ -128,6 +128,8 @@ public class LsNode extends Base {
                 sb.append("'" + hostname + "',");
             else
                 sb.append("'" + rowMap.get(i).get("name") + "',");
+
+            sb.append("'" + rowMap.get(i).get("mt_id") + "',");
 
             sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("del") ? 1 : 0) + ",");
             sb.append("'" + rowMap.get(i).get("timestamp") + "'");

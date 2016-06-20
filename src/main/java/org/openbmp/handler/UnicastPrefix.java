@@ -23,7 +23,7 @@ import java.net.UnknownHostException;
 /**
  * Format class for unicast_prefix parsed messages (openbmp.parsed.unicast_prefix)
  *
- * Schema Version: 1
+ * Schema Version: 1.1
  *
  */
 public class UnicastPrefix extends Base {
@@ -39,7 +39,8 @@ public class UnicastPrefix extends Base {
                                       "peer_ip", "peer_asn", "timestamp", "prefix", "prefix_len", "isIPv4",
                                       "origin", "as_path", "as_path_count", "origin_as",
                                       "nexthop", "med", "local_pref", "aggregator", "community_list", "ext_community_list",
-                                      "cluster_list", "isAtomicAgg", "isNexthopIPv4", "originator_id" };
+                                      "cluster_list", "isAtomicAgg", "isNexthopIPv4", "originator_id",
+                                      "path_id", "labels"};
 
         parse(data);
     }
@@ -80,7 +81,9 @@ public class UnicastPrefix extends Base {
                 new ParseNullAsEmpty(),             // cluster_list
                 new ParseLongEmptyAsZero(),         // isAtomicAgg
                 new ParseLongEmptyAsZero(),         // isNexthopIPv4
-                new ParseNullAsEmpty()              // originator_id
+                new ParseNullAsEmpty(),             // originator_id
+                new ParseLongEmptyAsZero(),         // Path ID
+                new ParseNullAsEmpty()              // Labels
         };
 
         return processors;
@@ -96,12 +99,13 @@ public class UnicastPrefix extends Base {
     public String[] genInsertStatement() {
         String [] stmt = { " INSERT IGNORE INTO rib (hash_id,peer_hash_id,path_attr_hash_id,isIPv4," +
                            "origin_as,prefix,prefix_len,prefix_bin,prefix_bcast_bin,prefix_bits,timestamp," +
-                           "isWithdrawn) VALUES ",
+                           "isWithdrawn,path_id,labels) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp)," +
                                "prefix_bits=values(prefix_bits)," +
                                "path_attr_hash_id=if(values(isWithdrawn) = 1, path_attr_hash_id, values(path_attr_hash_id))," +
-                               "origin_as=if(values(isWithdrawn) = 1, origin_as, values(origin_as)),isWithdrawn=values(isWithdrawn) " };
+                               "origin_as=if(values(isWithdrawn) = 1, origin_as, values(origin_as)),isWithdrawn=values(isWithdrawn)," +
+                               "path_id=values(path_id), labels=values(labels)" };
         return stmt;
     }
 
@@ -131,7 +135,9 @@ public class UnicastPrefix extends Base {
             sb.append("'" + IpAddr.getIpBits((String) rowMap.get(i).get("prefix")).substring(0,(Integer)rowMap.get(i).get("prefix_len")) + "',");
 
             sb.append("'" + rowMap.get(i).get("timestamp") + "',");
-            sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("del") ? 1 : 0) + "");
+            sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("del") ? 1 : 0) + ",");
+            sb.append(rowMap.get(i).get("path_id") + ",");
+            sb.append("'" + rowMap.get(i).get("labels") + "'");
 
             sb.append(')');
         }
