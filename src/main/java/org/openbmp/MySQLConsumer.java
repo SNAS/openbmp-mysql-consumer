@@ -13,12 +13,16 @@ import kafka.consumer.KafkaStream;
 import kafka.message.MessageAndMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.config.plugins.convert.TypeConverters;
 import org.openbmp.handler.*;
+import scala.Int;
 
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * MySQL Consumer class
@@ -26,7 +30,10 @@ import java.util.concurrent.*;
  *   A thread to process a topic partition.  Supports all openbmp.parsed.* topics.
  */
 public class MySQLConsumer implements Runnable {
-    private final Integer FIFO_QUEUE_SIZE = 10000;  // Size of the FIFO queue
+    private final Integer FIFO_QUEUE_SIZE = 10000;          // Size of the FIFO queue
+    private final Integer TOPIC_START_DELAY_DEFAULT = 60;   // Topic start consuming delay in seconds - default
+    private final Integer TOPIC_START_DELAY_PEER = 10;      // Topic start consuming delay in seconds - peer messages
+
 
     private KafkaStream m_stream;
     private String m_topics;
@@ -35,6 +42,7 @@ public class MySQLConsumer implements Runnable {
     private MySQLWriterThread writerThread;
     private BigInteger messageCount;
     private Long last_collector_msg_time;
+    private final Lock global_lock;
 
 
     private Map<String,Map<String, Integer>> routerConMap;
@@ -59,10 +67,12 @@ public class MySQLConsumer implements Runnable {
      * @param threadNumber         this tread nubmer, used for logging
      * @param cfg                  configuration
      * @param routerConMap         Hash of collectors/routers and connection counts
+     * @param lock                 Global lock
      */
     public MySQLConsumer(KafkaStream stream, int threadNumber, Config cfg, String topics,
-                         Map<String,Map<String, Integer>> routerConMap) {
+                         Map<String,Map<String, Integer>> routerConMap, Lock lock) {
 
+        global_lock = lock;
         m_threadNumber = threadNumber;
         m_stream = stream;
         m_topics = topics;
@@ -74,7 +84,7 @@ public class MySQLConsumer implements Runnable {
          */
         executor = Executors.newFixedThreadPool(1);
         writerQueue = new ArrayBlockingQueue(FIFO_QUEUE_SIZE);
-        writerThread = new MySQLWriterThread(cfg, writerQueue);
+        writerThread = new MySQLWriterThread(cfg, writerQueue, lock);
         executor.submit(writerThread);
     }
 
@@ -109,7 +119,31 @@ public class MySQLConsumer implements Runnable {
 
         ConsumerIterator<byte[], byte[]> it = m_stream.iterator();
 
-        logger.info("Started thread %d, waiting for messages...", m_threadNumber);
+        logger.info("Started thread %d", m_threadNumber);
+
+        /*
+         * delay consuming messages for specific topics.  This is required because some topics, such as router,
+         *     need to be processed first on initial start of consuming.
+         */
+        Integer startDelay = TOPIC_START_DELAY_DEFAULT * 1000;
+
+        if (m_topics.contains(".peer"))
+            startDelay = TOPIC_START_DELAY_PEER * 1000;
+
+        if (m_topics.contains(".collector") || m_topics.contains(".router"))
+            startDelay = 0;     // No delay
+
+        if (startDelay > 0) {
+            logger.info("   thread %d: topic start delay, waiting %d seconds for topic %s",
+                        m_threadNumber, startDelay / 1000, m_topics);
+            try {
+                Thread.sleep(startDelay);
+            } catch (InterruptedException e) {
+                // ignore
+            }
+        }
+
+        logger.info("   thread %d: consuming for messages on topic %s", m_threadNumber, m_topics);
 
         /*
          * Continuously read from Kafka stream and parse messages

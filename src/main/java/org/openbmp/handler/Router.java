@@ -37,7 +37,7 @@ public class Router extends Base {
     public Router(Headers headers, String data) {
         super();
         headerNames = new String [] { "action", "seq", "name", "hash", "ip_address", "description", "term_code",
-                                      "term_reason", "init_data", "term_data", "timestamp" };
+                                      "term_reason", "init_data", "term_data", "timestamp", "bgp_id" };
 
         this.headers = headers;
         parse(data);
@@ -63,7 +63,8 @@ public class Router extends Base {
                 new ParseNullAsEmpty(),             // Term reason
                 new ParseNullAsEmpty(),             // Init data
                 new ParseNullAsEmpty(),             // Term data
-                new ParseTimestamp()                // Timestamp
+                new ParseTimestamp(),               // Timestamp
+                new ParseNullAsEmpty()              // Global BGP-ID for router
         };
 
         return processors;
@@ -78,10 +79,11 @@ public class Router extends Base {
      */
     public String[] genInsertStatement() {
         String [] stmt = { " INSERT INTO routers (hash_id,name,ip_address,timestamp,isConnected,term_reason_code," +
-                                  "term_reason_text,term_data,init_data,description,collector_hash_id) VALUES ",
+                                  "term_reason_text,term_data,init_data,description,collector_hash_id,bgp_id) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp),isConnected=values(isConnected)," +
                                    "name=if(isConnected = 1, values(name), name)," +
+                                   "bgp_id=values(bgp_id)," +
                                    "description=values(description),init_data=values(init_data)," +
                                    "term_reason_code=values(term_reason_code),term_reason_text=values(term_reason_text)," +
                                    "collector_hash_id=values(collector_hash_id)" };
@@ -112,7 +114,8 @@ public class Router extends Base {
             sb.append("'" + rowMap.get(i).get("term_data") + "',");
             sb.append("'" + rowMap.get(i).get("init_data") + "',");
             sb.append("'" + rowMap.get(i).get("description") + "',");
-            sb.append("'" + headers.getCollector_hash_id() + "'");
+            sb.append("'" + headers.getCollector_hash_id() + "',");
+            sb.append("'" + rowMap.get(i).get("bgp_id") + "'");
             sb.append(')');
         }
 

@@ -48,9 +48,10 @@ public class MySQLWriterThread implements  Runnable {
      *
      * @param cfg       Configuration - e.g. DB credentials
      * @param queue     FIFO queue to read from
+     * @param lock                 Global lock
      */
-    public MySQLWriterThread(Config cfg, BlockingQueue queue) {
-        globalLock = new ReentrantLock();
+    public MySQLWriterThread(Config cfg, BlockingQueue queue, Lock lock) {
+        globalLock = lock;
 
         this.cfg = cfg;
         writerQueue = queue;
@@ -114,9 +115,11 @@ public class MySQLWriterThread implements  Runnable {
                 break;
 
             } catch (SQLException e) {
-                logger.info("SQL exception state " + i + " : " + e.getSQLState());
-                logger.info("SQL exception: " + e.getMessage());
-                logger.debug("query: " + query);
+                if (e.getSQLState().equals("40001")) {
+                    logger.info("SQL exception state " + i + " : " + e.getSQLState());
+                    logger.info("SQL exception: " + e.getMessage());
+                    logger.debug("query: " + query);
+                }
                 //e.printStackTrace();
 
                 if (!e.getMessage().contains("Broken pipe") && !e.getMessage().contains("Connection timed out") &&
@@ -164,7 +167,7 @@ public class MySQLWriterThread implements  Runnable {
                         bulk_count >= MAX_BULK_STATEMENTS) {
 
                     if (bulk_count > 0) {
-                        logger.debug("Max reached, doing insert: wait_ms=%d bulk_count=%d", cur_time - prev_time, bulk_count);
+                        logger.trace("Max reached, doing insert: wait_ms=%d bulk_count=%d", cur_time - prev_time, bulk_count);
 
                         // Block if another thread is running a sync query
                         globalLock.lock();

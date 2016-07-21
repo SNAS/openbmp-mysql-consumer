@@ -20,6 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -40,6 +43,7 @@ public class MySQLConsumerApp
     private ExecutorService executor;
     private final Config cfg;
     private static List<MySQLConsumer> _threads;
+    private final Lock global_lock;
 
     /**
      * routerConMap is a persistent map of collectors and routers. It's a hash of hashes.
@@ -57,6 +61,7 @@ public class MySQLConsumerApp
         consumer = null;
         _threads = new ArrayList<MySQLConsumer>();
         routerConMap = new ConcurrentHashMap<String, Map<String, Integer>>();
+        global_lock = new ReentrantLock();
 
         Boolean reconnect = true;
 
@@ -133,10 +138,12 @@ public class MySQLConsumerApp
         // Start threads to service the topicss
         int threadNumber = 0;
         for (Map.Entry<String,Integer> topic : topicCountMap.entrySet()) {
+
             List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic.getKey());
 
             for (final KafkaStream stream : streams) {
-                _threads.add(threadNumber, new MySQLConsumer(stream, threadNumber, cfg, topic.getKey(), routerConMap));
+                _threads.add(threadNumber, new MySQLConsumer(stream, threadNumber, cfg, topic.getKey(),
+                                                             routerConMap, global_lock));
 
                 executor.submit(_threads.get(threadNumber));
                 threadNumber++;

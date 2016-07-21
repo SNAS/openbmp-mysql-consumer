@@ -38,7 +38,8 @@ public class LsLink extends Base {
                                       "mt_id", "local_link_id", "remote_link_id", "intf_ip", "nei_ip", "igp_metric",
                                       "admin_group", "max_link_bw", "max_resv_bw", "unresv_bw", "te_default_metric",
                                       "link_protection", "mpls_proto_mask", "srlg", "link_name", "remote_node_hash",
-                                      "local_node_hash"};
+                                      "local_node_hash", "remote_igp_router_id", "remote_router_id", "local_node_asn",
+                                      "remote_node_asn", "peer_node_sid"};
 
         parse(data);
     }
@@ -90,7 +91,13 @@ public class LsLink extends Base {
                 new ParseNullAsEmpty(),         // srlg
                 new ParseNullAsEmpty(),         // link_name
                 new ParseNullAsEmpty(),         // remote_node_hash
-                new ParseNullAsEmpty()          // local_node_hash
+                new ParseNullAsEmpty(),         // local_node_hash
+                new ParseNullAsEmpty(),         // remote_igp_router_id
+                new ParseNullAsEmpty(),         // remote_router_id
+                new ParseLongEmptyAsZero(),     // local_node_asn
+                new ParseLongEmptyAsZero(),     // remote_node_asn
+                new ParseNullAsEmpty()          // Peer node SID
+
         };
 
         return processors;
@@ -107,7 +114,8 @@ public class LsLink extends Base {
         String [] stmt = { " REPLACE  INTO ls_links (hash_id,peer_hash_id, path_attr_hash_id,id,mt_id,interface_addr," +
                            "neighbor_addr,isIPv4,protocol,local_link_id,remote_link_id,local_node_hash_id,remote_node_hash_id," +
                            "admin_group,max_link_bw,max_resv_bw,unreserved_bw,te_def_metric,protection_type,mpls_proto_mask," +
-                           "igp_metric,srlg,name,isWithdrawn,timestamp) VALUES ",
+                           "igp_metric,srlg,name,isWithdrawn,timestamp,local_igp_router_id,local_router_id," +
+                           "local_asn,remote_igp_router_id,remote_router_id,remote_asn,peer_node_sid) VALUES ",
 
                            " " };
         return stmt;
@@ -170,7 +178,14 @@ public class LsLink extends Base {
             }
 
             sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("del") ? 1 : 0) + ",");
-            sb.append("'" + rowMap.get(i).get("timestamp") + "'");
+            sb.append("'" + rowMap.get(i).get("timestamp") + "',");
+            sb.append("'" + rowMap.get(i).get("igp_router_id") + "',");
+            sb.append("'" + rowMap.get(i).get("router_id") + "',");
+            sb.append(rowMap.get(i).get("local_node_asn") + ",");
+            sb.append("'" + rowMap.get(i).get("remote_igp_router_id") + "',");
+            sb.append("'" + rowMap.get(i).get("remote_router_id") + "',");
+            sb.append(rowMap.get(i).get("remote_node_asn") + ",");
+            sb.append("'" + rowMap.get(i).get("peer_node_sid") + "'");
 
             sb.append(')');
         }
