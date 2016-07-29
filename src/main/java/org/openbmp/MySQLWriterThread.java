@@ -115,7 +115,7 @@ public class MySQLWriterThread implements  Runnable {
                 break;
 
             } catch (SQLException e) {
-                if (e.getSQLState().equals("40001")) {
+                if (!e.getSQLState().equals("40001")) {
                     logger.info("SQL exception state " + i + " : " + e.getSQLState());
                     logger.info("SQL exception: " + e.getMessage());
                     logger.debug("query: " + query);
@@ -132,6 +132,7 @@ public class MySQLWriterThread implements  Runnable {
 
         if (!success) {
             logger.warn("Failed to insert/update after max retires of %d", MAX_MYSQL_RETRIES);
+            logger.warn("query: " + query);
         }
     }
 
