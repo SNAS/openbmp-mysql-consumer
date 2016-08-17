@@ -18,7 +18,7 @@ import org.supercsv.cellprocessor.ift.CellProcessor;
 /**
  * Format class for ls_node parsed messages (openbmp.parsed.ls_node)
  *
- * Schema Version: 1
+ * Schema Version: 1.3
  *
  */
 public class LsNode extends Base {
@@ -33,9 +33,11 @@ public class LsNode extends Base {
         headerNames = new String [] { "action", "seq", "hash", "base_attr_hash", "router_hash", "router_ip", "peer_hash", "peer_ip",
                                       "peer_asn", "timestamp", "igp_router_id", "router_id", "routing_id", "ls_id", "mt_id",
                                       "ospf_area_id", "isis_area_id", "protocol", "flags", "as_path", "local_pref",
-                                      "med", "nexthop", "name" };
+                                      "med", "nexthop", "name",  "isPrePolicy", "isAdjRibIn" };
 
         parse(data);
+
+        //TODO: Add isPrePolicy/isAdjRibIn to DB
     }
 
     /**
@@ -71,7 +73,9 @@ public class LsNode extends Base {
                 new ParseLongEmptyAsZero(),     // local_pref
                 new ParseLongEmptyAsZero(),     // med
                 new ParseNullAsEmpty(),         // nexthop
-                new ParseNullAsEmpty()          // name
+                new ParseNullAsEmpty(),         // name
+                new ParseLongEmptyAsZero(),     // isPrePolicy
+                new ParseLongEmptyAsZero()      // isAdjRibIn
         };
 
         return processors;

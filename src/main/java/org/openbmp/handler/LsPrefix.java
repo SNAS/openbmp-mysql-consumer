@@ -19,7 +19,7 @@ import org.supercsv.cellprocessor.ift.CellProcessor;
 /**
  * Format class for ls_prefix parsed messages (openbmp.parsed.ls_prefix)
  *
- * Schema Version: 1
+ * Schema Version: 1.3
  *
  */
 public class LsPrefix extends Base {
@@ -35,9 +35,13 @@ public class LsPrefix extends Base {
                                       "peer_asn", "timestamp", "igp_router_id", "router_id", "routing_id", "ls_id",
                                       "ospf_area_id", "isis_area_id", "protocol", "as_path", "local_pref", "med", "nexthop",
                                       "local_node_hash", "mt_id", "ospf_route_type", "igp_flags", "route_tag",
-                                      "ext_route_tag", "ospf_fwd_addr", "igp_metric", "prefix", "prefix_len"};
+                                      "ext_route_tag", "ospf_fwd_addr", "igp_metric", "prefix", "prefix_len",
+                                      "isPrePolicy", "isAdjRibIn"
+                                    };
 
         parse(data);
+
+        //TODO: Add isPrePolicy/isAdjRibIn to DB
     }
 
     /**
@@ -80,7 +84,9 @@ public class LsPrefix extends Base {
                 new ParseNullAsEmpty(),         // ospf_fwd_addr
                 new ParseLongEmptyAsZero(),     // igp_metric
                 new NotNull(),                  // prefix
-                new ParseInt()                  // prefix_len
+                new ParseInt(),                 // prefix_len
+                new ParseLongEmptyAsZero(),     // isPrePolicy
+                new ParseLongEmptyAsZero()      // isAdjRibIn
         };
 
         return processors;

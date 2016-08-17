@@ -23,7 +23,7 @@ import java.net.UnknownHostException;
 /**
  * Format class for unicast_prefix parsed messages (openbmp.parsed.unicast_prefix)
  *
- * Schema Version: 1.1
+ * Schema Version: 1.3
  *
  */
 public class UnicastPrefix extends Base {
@@ -40,7 +40,7 @@ public class UnicastPrefix extends Base {
                                       "origin", "as_path", "as_path_count", "origin_as",
                                       "nexthop", "med", "local_pref", "aggregator", "community_list", "ext_community_list",
                                       "cluster_list", "isAtomicAgg", "isNexthopIPv4", "originator_id",
-                                      "path_id", "labels"};
+                                      "path_id", "labels", "isPrePolicy", "isAdjRibIn"};
 
         parse(data);
     }
@@ -83,7 +83,9 @@ public class UnicastPrefix extends Base {
                 new ParseLongEmptyAsZero(),         // isNexthopIPv4
                 new ParseNullAsEmpty(),             // originator_id
                 new ParseLongEmptyAsZero(),         // Path ID
-                new ParseNullAsEmpty()              // Labels
+                new ParseNullAsEmpty(),             // Labels
+                new ParseLongEmptyAsZero(),         // isPrePolicy
+                new ParseLongEmptyAsZero()          // isAdjRibIn
         };
 
         return processors;
@@ -99,13 +101,15 @@ public class UnicastPrefix extends Base {
     public String[] genInsertStatement() {
         String [] stmt = { " INSERT IGNORE INTO rib (hash_id,peer_hash_id,path_attr_hash_id,isIPv4," +
                            "origin_as,prefix,prefix_len,prefix_bin,prefix_bcast_bin,prefix_bits,timestamp," +
-                           "isWithdrawn,path_id,labels) VALUES ",
+                           "isWithdrawn,path_id,labels,isPrePolicy,isAdjRibIn) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp)," +
                                "prefix_bits=values(prefix_bits)," +
                                "path_attr_hash_id=if(values(isWithdrawn) = 1, path_attr_hash_id, values(path_attr_hash_id))," +
                                "origin_as=if(values(isWithdrawn) = 1, origin_as, values(origin_as)),isWithdrawn=values(isWithdrawn)," +
-                               "path_id=values(path_id), labels=values(labels)" };
+                               "path_id=values(path_id), labels=values(labels)," +
+                               "isPrePolicy=values(isPrePolicy), isAdjRibIn=values(isAdjRibIn) "
+                        };
         return stmt;
     }
 
@@ -137,7 +141,9 @@ public class UnicastPrefix extends Base {
             sb.append("'" + rowMap.get(i).get("timestamp") + "',");
             sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("del") ? 1 : 0) + ",");
             sb.append(rowMap.get(i).get("path_id") + ",");
-            sb.append("'" + rowMap.get(i).get("labels") + "'");
+            sb.append("'" + rowMap.get(i).get("labels") + "',");
+            sb.append(rowMap.get(i).get("isPrePolicy") + ",");
+            sb.append(rowMap.get(i).get("isAdjRibIn"));
 
             sb.append(')');
         }

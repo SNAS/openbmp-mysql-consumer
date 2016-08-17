@@ -20,7 +20,7 @@ import org.supercsv.cellprocessor.ift.CellProcessor;
 /**
  * Format class for ls_link parsed messages (openbmp.parsed.ls_link)
  *
- * Schema Version: 1
+ * Schema Version: 1.3
  *
  */
 public class LsLink extends Base {
@@ -39,9 +39,11 @@ public class LsLink extends Base {
                                       "admin_group", "max_link_bw", "max_resv_bw", "unresv_bw", "te_default_metric",
                                       "link_protection", "mpls_proto_mask", "srlg", "link_name", "remote_node_hash",
                                       "local_node_hash", "remote_igp_router_id", "remote_router_id", "local_node_asn",
-                                      "remote_node_asn", "peer_node_sid"};
+                                      "remote_node_asn", "peer_node_sid", "isPrePolicy", "isAdjRibIn"};
 
         parse(data);
+
+        //TODO: Add isPrePolicy/isAdjRibIn to DB
     }
 
     /**
@@ -96,7 +98,9 @@ public class LsLink extends Base {
                 new ParseNullAsEmpty(),         // remote_router_id
                 new ParseLongEmptyAsZero(),     // local_node_asn
                 new ParseLongEmptyAsZero(),     // remote_node_asn
-                new ParseNullAsEmpty()          // Peer node SID
+                new ParseNullAsEmpty(),         // Peer node SID
+                new ParseLongEmptyAsZero(),     // isPrePolicy
+                new ParseLongEmptyAsZero()      // isAdjRibIn
 
         };
 

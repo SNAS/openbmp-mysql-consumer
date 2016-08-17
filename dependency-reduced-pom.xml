@@ -63,6 +63,7 @@
   <properties>
     <build.number>SNAPSHOT</build.number>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <kafka.version>0.9.0.1</kafka.version>
   </properties>
 </project>
 
