@@ -1,9 +1,11 @@
 package org.openbmp;
 
+import org.openbmp.api.helpers.IpAddr;
+
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
-import org.openbmp.helpers.IpAddr;
+
 
 /**
  * Unit test for simple MySQLConsumerApp.

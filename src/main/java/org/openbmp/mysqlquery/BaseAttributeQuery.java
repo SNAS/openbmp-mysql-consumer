@@ -1,81 +1,20 @@
-package org.openbmp.handler;
-/*
- * Copyright (c) 2015 Cisco Systems, Inc. and others.  All rights reserved.
- *
- * This program and the accompanying materials are made available under the
- * terms of the Eclipse Public License v1.0 which accompanies this distribution,
- * and is available at http://www.eclipse.org/legal/epl-v10.html
- *
- */
-import org.openbmp.processor.ParseLongEmptyAsZero;
-import org.openbmp.processor.ParseNullAsEmpty;
-import org.openbmp.processor.ParseTimestamp;
-import org.supercsv.cellprocessor.ParseLong;
-import org.supercsv.cellprocessor.constraint.NotNull;
-import org.supercsv.cellprocessor.ift.CellProcessor;
-import scala.Int;
+package org.openbmp.mysqlquery;
 
-/**
- * Format class for base_attribute parsed messages (openbmp.parsed.base_attribute)
- *
- * Schema Version: 1
- *
- */
-public class BaseAttribute extends Base {
+import java.util.List;
+import java.util.Map;
 
-    /**
-     * Handle the message by parsing it and storing the data in memory.
-     *
-     * @param data
-     */
-    public BaseAttribute(String data) {
-        super();
-        headerNames = new String [] { "action", "seq", "hash", "router_hash", "router_ip", "peer_hash", "peer_ip",
-                                      "peer_asn", "timestamp", "origin", "as_path", "as_path_count", "origin_as",
-                                      "nexthop", "med", "local_pref", "aggregator", "community_list", "ext_community_list",
-                                      "cluster_list", "isAtomicAgg", "isNexthopIPv4", "originator_id" };
+import org.openbmp.api.parsed.message.HeaderDefault;
 
-        parse(data);
-    }
-
-    /**
-     * Processors used for each field.
-     *
-     * Order matters and must match the same order as defined in headerNames
-     *
-     * @return array of cell processors
-     */
-    protected CellProcessor[] getProcessors() {
-
-        final CellProcessor[] processors = new CellProcessor[] {
-                new NotNull(),                      // action
-                new ParseLong(),                    // seq
-                new NotNull(),                      // hash
-                new NotNull(),                      // router hash
-                new NotNull(),                      // router_ip
-                new NotNull(),                      // peer_hash
-                new NotNull(),                      // peer_ip
-                new ParseLong(),                    // peer_asn
-                new ParseTimestamp(),               // timestamp
-                new ParseNullAsEmpty(),             // origin
-                new ParseNullAsEmpty(),             // as_path
-                new ParseLong(),                    // as_path_count
-                new ParseLong(),                    // origin_as
-                new ParseNullAsEmpty(),             // nexthop
-                new ParseLong(),                    // med
-                new ParseLong(),                    // local_pref
-                new ParseNullAsEmpty(),             // aggregator
-                new ParseNullAsEmpty(),             // community_list
-                new ParseNullAsEmpty(),             // ext_community_list
-                new ParseNullAsEmpty(),             // cluster_list
-                new ParseLongEmptyAsZero(),         // isAtomicAgg
-                new ParseLongEmptyAsZero(),         // isNexthopIPv4
-                new ParseNullAsEmpty()              // originator_id
-        };
-
-        return processors;
-    }
-
+public class BaseAttributeQuery extends Query{
+	
+	
+	private List<Map<String, Object>> rowMap;
+	
+	public BaseAttributeQuery(List<Map<String, Object>> rowMap){
+		
+		this.rowMap = rowMap;
+	}
+	
     /**
      * Generate MySQL insert/update statement, sans the values
      *
@@ -105,23 +44,23 @@ public class BaseAttribute extends Base {
                 sb.append(',');
 
             sb.append('(');
-            sb.append("'" + rowMap.get(i).get("hash") + "',");
-            sb.append("'" + rowMap.get(i).get("peer_hash") + "',");
-            sb.append("'" + rowMap.get(i).get("origin") + "',");
-            sb.append("'" + rowMap.get(i).get("as_path") + "',");
-            sb.append(rowMap.get(i).get("origin_as") + ",");
-            sb.append("'" + rowMap.get(i).get("nexthop") + "',");
-            sb.append(rowMap.get(i).get("med") + ",");
-            sb.append(rowMap.get(i).get("local_pref") + ",");
-            sb.append(rowMap.get(i).get("isAtomicAgg") + ",");
-            sb.append("'" + rowMap.get(i).get("aggregator") + "',");
-            sb.append("'" + rowMap.get(i).get("community_list") + "',");
-            sb.append("'" + rowMap.get(i).get("ext_community_list") + "',");
-            sb.append("'" + rowMap.get(i).get("cluster_list") + "',");
-            sb.append("'" + rowMap.get(i).get("originator_id") + "',");
-            sb.append(rowMap.get(i).get("as_path_count") + ",");
-            sb.append(rowMap.get(i).get("isNexthopIPv4") + ",");
-            sb.append("'" + rowMap.get(i).get("timestamp") + "'");
+            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.peer_hash, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.origin, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.as_path, i) + "',");
+            sb.append(lookupValue(HeaderDefault.origin_as, i) + ",");
+            sb.append("'" + lookupValue(HeaderDefault.nexthop, i) + "',");
+            sb.append(lookupValue(HeaderDefault.med, i) + ",");
+            sb.append(lookupValue(HeaderDefault.local_pref, i) + ",");
+            sb.append(lookupValue(HeaderDefault.isAtomicAgg, i) + ",");
+            sb.append("'" + lookupValue(HeaderDefault.aggregator, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.community_list, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.ext_community_list, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.community_list, i) + "',");
+            sb.append("'" + lookupValue(HeaderDefault.originator_id, i) + "',");
+            sb.append(lookupValue(HeaderDefault.as_path_count, i) + ",");
+            sb.append(lookupValue(HeaderDefault.isNexthopIPv4, i) + ",");
+            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "'");
             sb.append(')');
         }
 
@@ -157,7 +96,7 @@ public class BaseAttribute extends Base {
          */
         for (int i=0; i < rowMap.size(); i++) {
 
-            String as_path_str = ((String)rowMap.get(i).get("as_path")).trim();
+            String as_path_str = ((String)lookupValue(HeaderDefault.as_path, i)).trim();
             as_path_str = as_path_str.replaceAll("[{}]", "");
             String[] as_path = as_path_str.split(" ");
 
@@ -199,8 +138,8 @@ public class BaseAttribute extends Base {
                         if (sb.length() > 0)
                             sb.append(',');
 
-                        sb.append("(" + asn + "," + left_asn + "," + right_asn + ",'" + rowMap.get(i).get("hash") + "','" +
-                                rowMap.get(i).get("peer_hash") + "')");
+                        sb.append("(" + asn + "," + left_asn + "," + right_asn + ",'" + lookupValue(HeaderDefault.hash, i) + "','" +
+                        		lookupValue(HeaderDefault.peer_hash, i) + "')");
 
 
                     } else {
@@ -208,8 +147,8 @@ public class BaseAttribute extends Base {
                         if (sb.length() > 0)
                             sb.append(',');
 
-                        sb.append("(" + asn + "," + left_asn + ",0,'" + rowMap.get(i).get("hash") + "','" +
-                                rowMap.get(i).get("peer_hash") + "')");
+                        sb.append("(" + asn + "," + left_asn + ",0,'" + lookupValue(HeaderDefault.hash, i) + "','" +
+                        		lookupValue(HeaderDefault.peer_hash, i) + "')");
                         break;
                     }
 
@@ -252,11 +191,11 @@ public class BaseAttribute extends Base {
          * which are separated by colons
          */
         for (int i=0; i < rowMap.size(); i++) {
-            String communityString = ((String)rowMap.get(i).get("community_list")).trim();
+            String communityString = ((String)lookupValue(HeaderDefault.community_list, i)).trim();
             String[] communityList = communityString.split(" ");
 
-            String path_attr_hash = (String) rowMap.get(i).get("hash");
-            String peer_hash = (String) rowMap.get(i).get("peer_hash");
+            String path_attr_hash = (String) lookupValue(HeaderDefault.hash, i);
+            String peer_hash = (String) lookupValue(HeaderDefault.peer_hash, i);
 
             for (int j = 0; j < communityList.length; j++) {
                 if (communityList[j].length() <= 0) {
@@ -292,4 +231,5 @@ public class BaseAttribute extends Base {
             sb.append("");
         return sb.toString();
     }
+
 }
