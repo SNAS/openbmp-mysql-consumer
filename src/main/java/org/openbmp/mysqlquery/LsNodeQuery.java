@@ -4,20 +4,16 @@ import java.util.List;
 import java.util.Map;
 
 import org.openbmp.api.helpers.IpAddr;
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 
 
 public class LsNodeQuery extends Query{
 	
-	private List<Map<String, Object>> rowMap;
-	
 	public LsNodeQuery(List<Map<String, Object>> rowMap){
 		
 		this.rowMap = rowMap;
 	}
-	
-	
 	
 	 /**
      * Generate MySQL insert/update statement, sans the values
@@ -46,35 +42,35 @@ public class LsNodeQuery extends Query{
             if (i > 0)
                 sb.append(',');
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.peer_hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.base_attr_hash, i) + "',");
-            sb.append(lookupValue(HeaderDefault.peer_asn, i) + ",");
-            sb.append(lookupValue(HeaderDefault.routing_id, i) + ",");
-            sb.append(lookupValue(HeaderDefault.ls_id, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.igp_router_id, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.ospf_area_id, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.protocol, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.router_id, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.isis_area_id, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.flags, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.PEER_HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.BASE_ATTR_HASH, i) + "',");
+            sb.append(lookupValue(MsgBusFields.PEER_ASN, i) + ",");
+            sb.append(lookupValue(MsgBusFields.ROUTING_ID, i) + ",");
+            sb.append(lookupValue(MsgBusFields.LS_ID, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.IGP_ROUTER_ID, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.OSPF_AREA_ID, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.PROTOCOL, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ROUTER_ID, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ISIS_AREA_ID, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.FLAGS, i) + "',");
 
             // Resolve IP address
             String hostname = "";
-            if (lookupValue(HeaderDefault.protocol, i).toString().contains("OSPF"))
-                hostname = IpAddr.resolveIp(lookupValue(HeaderDefault.igp_router_id, i).toString());
+            if (lookupValue(MsgBusFields.PROTOCOL, i).toString().contains("OSPF"))
+                hostname = IpAddr.resolveIp(lookupValue(MsgBusFields.IGP_ROUTER_ID, i).toString());
             else
-                hostname = IpAddr.resolveIp(lookupValue(HeaderDefault.router_id, i).toString());
+                hostname = IpAddr.resolveIp(lookupValue(MsgBusFields.ROUTER_ID, i).toString());
 
-            if (lookupValue(HeaderDefault.name, i).toString().length() <= 0)
+            if (lookupValue(MsgBusFields.NAME, i).toString().length() <= 0)
                 sb.append("'" + hostname + "',");
             else
-                sb.append("'" + lookupValue(HeaderDefault.name, i) + "',");
+                sb.append("'" + lookupValue(MsgBusFields.NAME, i) + "',");
 
-            sb.append("'" + lookupValue(HeaderDefault.mt_id, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.MT_ID, i) + "',");
 
-            sb.append((((String)lookupValue(HeaderDefault.action, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "'");
+            sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
 
             sb.append(')');
         }

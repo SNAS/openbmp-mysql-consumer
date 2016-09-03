@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 
 /**
@@ -23,9 +23,12 @@ public abstract class Query {
 	 * @param index
 	 * @return Object
 	 */
-	protected Object lookupValue(HeaderDefault header, int index){
+	protected Object lookupValue(MsgBusFields header, int index){
     	
-    	Object value = rowMap.get(index).get(header.toString());
+    	if(rowMap==null || rowMap.get(index)==null)
+    		return header.getDefaultValue();
+    	
+		Object value = rowMap.get(index).get(header.getName());
     	
     	return value==null ? header.getDefaultValue() : value;
     	

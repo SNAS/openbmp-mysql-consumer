@@ -4,13 +4,11 @@ import java.util.List;
 import java.util.Map;
 
 import org.openbmp.api.helpers.IpAddr;
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 
 
 public class UnicastPrefixQuery extends Query{
-	
-	private List<Map<String, Object>> rowMap;
 	
 	public UnicastPrefixQuery(List<Map<String, Object>> rowMap){
 		
@@ -53,24 +51,24 @@ public class UnicastPrefixQuery extends Query{
                 sb.append(',');
 
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.peer_hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.base_attr_hash, i) + "',");
-            sb.append(lookupValue(HeaderDefault.isIPv4, i) + ",");
-            sb.append(lookupValue(HeaderDefault.origin_as, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.prefix, i) + "',");
-            sb.append(lookupValue(HeaderDefault.prefix_len, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.PEER_HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.BASE_ATTR_HASH, i) + "',");
+            sb.append(lookupValue(MsgBusFields.IS_IPV4, i) + ",");
+            sb.append(lookupValue(MsgBusFields.ORIGIN_AS, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.PREFIX, i) + "',");
+            sb.append(lookupValue(MsgBusFields.PREFIX_LEN, i) + ",");
 
-            sb.append("X'" + IpAddr.getIpHex((String) lookupValue(HeaderDefault.prefix, i)) + "',");
-            sb.append("X'" + IpAddr.getIpBroadcastHex((String) lookupValue(HeaderDefault.prefix, i), (Integer) lookupValue(HeaderDefault.prefix_len, i)) + "',");
-            sb.append("'" + IpAddr.getIpBits((String) lookupValue(HeaderDefault.prefix, i)).substring(0,(Integer)lookupValue(HeaderDefault.prefix_len, i)) + "',");
+            sb.append("X'" + IpAddr.getIpHex((String) lookupValue(MsgBusFields.PREFIX, i)) + "',");
+            sb.append("X'" + IpAddr.getIpBroadcastHex((String) lookupValue(MsgBusFields.PREFIX, i), (Integer) lookupValue(MsgBusFields.PREFIX_LEN, i)) + "',");
+            sb.append("'" + IpAddr.getIpBits((String) lookupValue(MsgBusFields.PREFIX, i)).substring(0,(Integer)lookupValue(MsgBusFields.PREFIX_LEN, i)) + "',");
 
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "',");
-            sb.append((((String)lookupValue(HeaderDefault.action, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
-            sb.append(lookupValue(HeaderDefault.path_id, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.labels, i) + "',");
-            sb.append(lookupValue(HeaderDefault.isPrePolicy, i) + ",");
-            sb.append(lookupValue(HeaderDefault.isAdjRibIn, i));
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "',");
+            sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
+            sb.append(lookupValue(MsgBusFields.PATH_ID, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.LABELS, i) + "',");
+            sb.append(lookupValue(MsgBusFields.ISPREPOLICY, i) + ",");
+            sb.append(lookupValue(MsgBusFields.IS_ADJ_RIB_IN, i));
 
             sb.append(')');
         }

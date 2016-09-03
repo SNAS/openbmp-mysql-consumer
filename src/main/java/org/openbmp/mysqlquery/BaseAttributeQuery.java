@@ -3,12 +3,9 @@ package org.openbmp.mysqlquery;
 import java.util.List;
 import java.util.Map;
 
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 public class BaseAttributeQuery extends Query{
-	
-	
-	private List<Map<String, Object>> rowMap;
 	
 	public BaseAttributeQuery(List<Map<String, Object>> rowMap){
 		
@@ -44,23 +41,23 @@ public class BaseAttributeQuery extends Query{
                 sb.append(',');
 
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.peer_hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.origin, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.as_path, i) + "',");
-            sb.append(lookupValue(HeaderDefault.origin_as, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.nexthop, i) + "',");
-            sb.append(lookupValue(HeaderDefault.med, i) + ",");
-            sb.append(lookupValue(HeaderDefault.local_pref, i) + ",");
-            sb.append(lookupValue(HeaderDefault.isAtomicAgg, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.aggregator, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.community_list, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.ext_community_list, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.community_list, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.originator_id, i) + "',");
-            sb.append(lookupValue(HeaderDefault.as_path_count, i) + ",");
-            sb.append(lookupValue(HeaderDefault.isNexthopIPv4, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "'");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.PEER_HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ORIGIN, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.AS_PATH, i) + "',");
+            sb.append(lookupValue(MsgBusFields.ORIGIN_AS, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.NEXTHOP, i) + "',");
+            sb.append(lookupValue(MsgBusFields.MED, i) + ",");
+            sb.append(lookupValue(MsgBusFields.LOCAL_PREF, i) + ",");
+            sb.append(lookupValue(MsgBusFields.ISATOMICAGG, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.AGGREGATOR, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.COMMUNITY_LIST, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.EXT_COMMUNITY_LIST, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.COMMUNITY_LIST, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ORIGINATOR_ID, i) + "',");
+            sb.append(lookupValue(MsgBusFields.AS_PATH_COUNT, i) + ",");
+            sb.append(lookupValue(MsgBusFields.IS_NEXTHOP_IPV4, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
             sb.append(')');
         }
 
@@ -96,7 +93,7 @@ public class BaseAttributeQuery extends Query{
          */
         for (int i=0; i < rowMap.size(); i++) {
 
-            String as_path_str = ((String)lookupValue(HeaderDefault.as_path, i)).trim();
+            String as_path_str = ((String)lookupValue(MsgBusFields.AS_PATH, i)).trim();
             as_path_str = as_path_str.replaceAll("[{}]", "");
             String[] as_path = as_path_str.split(" ");
 
@@ -138,8 +135,8 @@ public class BaseAttributeQuery extends Query{
                         if (sb.length() > 0)
                             sb.append(',');
 
-                        sb.append("(" + asn + "," + left_asn + "," + right_asn + ",'" + lookupValue(HeaderDefault.hash, i) + "','" +
-                        		lookupValue(HeaderDefault.peer_hash, i) + "')");
+                        sb.append("(" + asn + "," + left_asn + "," + right_asn + ",'" + lookupValue(MsgBusFields.HASH, i) + "','" +
+                        		lookupValue(MsgBusFields.PEER_HASH, i) + "')");
 
 
                     } else {
@@ -147,8 +144,8 @@ public class BaseAttributeQuery extends Query{
                         if (sb.length() > 0)
                             sb.append(',');
 
-                        sb.append("(" + asn + "," + left_asn + ",0,'" + lookupValue(HeaderDefault.hash, i) + "','" +
-                        		lookupValue(HeaderDefault.peer_hash, i) + "')");
+                        sb.append("(" + asn + "," + left_asn + ",0,'" + lookupValue(MsgBusFields.HASH, i) + "','" +
+                        		lookupValue(MsgBusFields.PEER_HASH, i) + "')");
                         break;
                     }
 
@@ -191,11 +188,11 @@ public class BaseAttributeQuery extends Query{
          * which are separated by colons
          */
         for (int i=0; i < rowMap.size(); i++) {
-            String communityString = ((String)lookupValue(HeaderDefault.community_list, i)).trim();
+            String communityString = ((String)lookupValue(MsgBusFields.COMMUNITY_LIST, i)).trim();
             String[] communityList = communityString.split(" ");
 
-            String path_attr_hash = (String) lookupValue(HeaderDefault.hash, i);
-            String peer_hash = (String) lookupValue(HeaderDefault.peer_hash, i);
+            String path_attr_hash = (String) lookupValue(MsgBusFields.HASH, i);
+            String peer_hash = (String) lookupValue(MsgBusFields.PEER_HASH, i);
 
             for (int j = 0; j < communityList.length; j++) {
                 if (communityList[j].length() <= 0) {

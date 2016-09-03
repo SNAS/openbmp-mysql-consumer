@@ -3,11 +3,9 @@ package org.openbmp.mysqlquery;
 import java.util.List;
 import java.util.Map;
 
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 public class BmpStatQuery extends Query{
-	
-	private List<Map<String, Object>> rowMap;
 	
 	public BmpStatQuery(List<Map<String, Object>> rowMap){
 		
@@ -42,17 +40,17 @@ public class BmpStatQuery extends Query{
             if (i > 0)
                 sb.append(',');
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.peer_hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "',");
-            sb.append(lookupValue(HeaderDefault.rejected, i) + ",");
-            sb.append(lookupValue(HeaderDefault.known_dup_updates, i) + ",");
-            sb.append(lookupValue(HeaderDefault.known_dup_withdraws, i) + ",");
-            sb.append(lookupValue(HeaderDefault.invalid_cluster_list, i) + ",");
-            sb.append(lookupValue(HeaderDefault.invalid_as_path, i) + ",");
-            sb.append(lookupValue(HeaderDefault.invalid_originator, i) + ",");
-            sb.append(lookupValue(HeaderDefault.invalid_as_confed, i) + ",");
-            sb.append(lookupValue(HeaderDefault.pre_policy, i) + ",");
-            sb.append(lookupValue(HeaderDefault.post_policy, i) + "");
+            sb.append("'" + lookupValue(MsgBusFields.PEER_HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "',");
+            sb.append(lookupValue(MsgBusFields.REJECTED, i) + ",");
+            sb.append(lookupValue(MsgBusFields.KNOWN_DUP_UPDATES, i) + ",");
+            sb.append(lookupValue(MsgBusFields.KNOWN_DUP_WITHDRAWS, i) + ",");
+            sb.append(lookupValue(MsgBusFields.INVALID_CLUSTER_LIST, i) + ",");
+            sb.append(lookupValue(MsgBusFields.INVALID_AS_PATH, i) + ",");
+            sb.append(lookupValue(MsgBusFields.INVALID_ORIGINATOR, i) + ",");
+            sb.append(lookupValue(MsgBusFields.INVALID_AS_CONFED, i) + ",");
+            sb.append(lookupValue(MsgBusFields.PRE_POLICY, i) + ",");
+            sb.append(lookupValue(MsgBusFields.POST_POLICY, i) + "");
 
             sb.append(')');
         }

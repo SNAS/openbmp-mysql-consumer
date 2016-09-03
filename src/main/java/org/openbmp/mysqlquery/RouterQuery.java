@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 import org.openbmp.api.parsed.message.Message;
 
 public class RouterQuery extends Query{
@@ -53,20 +53,20 @@ public class RouterQuery extends Query{
             if (i > 0)
                 sb.append(',');
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.name, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.ip_address, i)  + "',");
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i)  + "',");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.NAME, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.IP_ADDRESS, i)  + "',");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i)  + "',");
 
             sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("term") ? 0 : 1) + ",");
 
-            sb.append(  lookupValue(HeaderDefault.term_code, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.term_reason, i)  + "',");
-            sb.append("'" + lookupValue(HeaderDefault.term_data, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.init_data, i)+ "',");
-            sb.append("'" + lookupValue(HeaderDefault.description, i) + "',");
+            sb.append(  lookupValue(MsgBusFields.TERM_CODE, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TERM_REASON, i)  + "',");
+            sb.append("'" + lookupValue(MsgBusFields.TERM_DATA, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.INIT_DATA, i)+ "',");
+            sb.append("'" + lookupValue(MsgBusFields.DESCRIPTION, i) + "',");
             sb.append("'" + message.getCollector_hash_id() + "',");
-            sb.append("'" + lookupValue(HeaderDefault.bgp_id, i)  + "'");
+            sb.append("'" + lookupValue(MsgBusFields.BGP_ID, i)  + "'");
             sb.append(')');
         }
 
@@ -102,41 +102,41 @@ public class RouterQuery extends Query{
 
         for (int i = 0; i < rowMap.size(); i++) {
 
-            if (((String) rowMap.get(i).get(HeaderDefault.action.toString())).equalsIgnoreCase("first") || ((String) rowMap.get(i).get(HeaderDefault.action.toString())).equalsIgnoreCase("init")) {
+            if (((String) lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("first") || ((String) lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("init")) {
                 if (sb.length() > 0)
                     sb.append(";");
 
                 // Upon initial router message, we set the state of all peers to down since we will get peer UP's
                 sb.append("UPDATE bgp_peers SET state = 0 WHERE router_hash_id = '");
-                sb.append(rowMap.get(i).get(HeaderDefault.hash.toString()) + "'");
+                sb.append(lookupValue(MsgBusFields.HASH, i) + "'");
 
                 // Collector changed/heartbeat messages maintain the routerMap, but timing might prevent an update
                 //    so add the router if it doesn't exist already
-                if (! routerMap.containsKey((String)rowMap.get(i).get(HeaderDefault.ip_address.toString())) ) {
-                    routerMap.put((String)rowMap.get(i).get(HeaderDefault.ip_address.toString()), 1);
+                if (! routerMap.containsKey((String)lookupValue(MsgBusFields.IP_ADDRESS, i)) ) {
+                    routerMap.put((String)lookupValue(MsgBusFields.IP_ADDRESS, i), 1);
 
                 } else {
                     // Increment the entry for the new connection
-                    routerMap.put((String)rowMap.get(i).get(HeaderDefault.ip_address.toString()),
-                            routerMap.get((String)rowMap.get(i).get(HeaderDefault.ip_address.toString())) + 1 );
+                    routerMap.put((String)lookupValue(MsgBusFields.IP_ADDRESS, i),
+                            routerMap.get((String)lookupValue(MsgBusFields.IP_ADDRESS, i)) + 1 );
                 }
 
             }
 
-            else if (((String) rowMap.get(i).get(HeaderDefault.action.toString())).equalsIgnoreCase("term")) {
+            else if (((String) lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("term")) {
                 // Update the router map to reflect the termination
-                if (routerMap.containsKey((String)rowMap.get(i).get(HeaderDefault.ip_address.toString())) ) {
+                if (routerMap.containsKey((String)lookupValue(MsgBusFields.IP_ADDRESS, i)) ) {
 
                     // decrement connection count or remove the router entry on term
-                    if (routerMap.get((String)rowMap.get(i).get(HeaderDefault.ip_address.toString())) > 1) {
-                        routerMap.put((String)rowMap.get(i).get(HeaderDefault.ip_address.toString()),
-                                routerMap.get((String)rowMap.get(i).get(HeaderDefault.ip_address.toString())) - 1 );
+                    if (routerMap.get((String)lookupValue(MsgBusFields.IP_ADDRESS, i)) > 1) {
+                        routerMap.put((String)lookupValue(MsgBusFields.IP_ADDRESS, i),
+                                routerMap.get((String)lookupValue(MsgBusFields.IP_ADDRESS, i)) - 1 );
 
                         // Suppress the term message since another connection exists
                         resultMap.remove(rowMap.get(i));
 
                     } else {
-                        routerMap.remove((String)rowMap.get(i).get(HeaderDefault.ip_address.toString()));
+                        routerMap.remove((String)lookupValue(MsgBusFields.IP_ADDRESS, i));
                     }
                 }
             }

@@ -4,11 +4,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 public class CollectorQuery extends Query{
-	
-	private List<Map<String, Object>> rowMap;
 	
 	public CollectorQuery(List<Map<String, Object>> rowMap){
 		
@@ -40,12 +38,12 @@ public class CollectorQuery extends Query{
             if (i > 0)
                 sb.append(',');
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
-            sb.append((((String)lookupValue(HeaderDefault.action, i)).equalsIgnoreCase("stopped") ? "'down'" : "'up'") + ",");
-            sb.append("'" + lookupValue(HeaderDefault.admin_id, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.routers, i) + "',");
-            sb.append(lookupValue(HeaderDefault.router_count, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "'");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("stopped") ? "'down'" : "'up'") + ",");
+            sb.append("'" + lookupValue(MsgBusFields.ADMIN_ID, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ROUTERS, i) + "',");
+            sb.append(lookupValue(MsgBusFields.ROUTER_COUNT, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
             sb.append(')');
         }
 
@@ -70,32 +68,32 @@ public class CollectorQuery extends Query{
 
         for (int i = 0; i < rowMap.size(); i++) {
 
-            String action = (String) lookupValue(HeaderDefault.action, i);
+            String action = (String) lookupValue(MsgBusFields.ACTION, i);
 
             if (i > 0 && sb.length() > 0)
                 sb.append(';');
 
             if (action.equalsIgnoreCase("started") || action.equalsIgnoreCase("stopped")) {
                 sb.append("UPDATE routers SET isConnected = False WHERE collector_hash_id = '");
-                sb.append(lookupValue(HeaderDefault.hash, i) + "'");
+                sb.append(lookupValue(MsgBusFields.HASH, i) + "'");
 
                 // Collector start/stopped should always have an empty router set
-                routerConMap.remove((String)lookupValue(HeaderDefault.hash, i));
+                routerConMap.remove((String)lookupValue(MsgBusFields.HASH, i));
 
             }
             else { // heartbeat or changed
 
                 // Add concurrent connection map for collector if it does not exist already
-                if (! routerConMap.containsKey((String)lookupValue(HeaderDefault.hash, i))) {
-                    routerConMap.put((String)lookupValue(HeaderDefault.hash, i), new ConcurrentHashMap<String, Integer>());
+                if (! routerConMap.containsKey((String)lookupValue(MsgBusFields.HASH, i))) {
+                    routerConMap.put((String)lookupValue(MsgBusFields.HASH, i), new ConcurrentHashMap<String, Integer>());
                     changed = Boolean.TRUE;
                 }
 
-                String[] routerArray = ((String) lookupValue(HeaderDefault.routers, i)).split("[ ]*,[ ]*");
+                String[] routerArray = ((String) lookupValue(MsgBusFields.ROUTERS, i)).split("[ ]*,[ ]*");
 
                 if (routerArray.length > 0) {
                     // Update the router list
-                    Map<String, Integer> routerMap = routerConMap.get((String) lookupValue(HeaderDefault.hash, i));
+                    Map<String, Integer> routerMap = routerConMap.get((String) lookupValue(MsgBusFields.HASH, i));
                     routerMap.clear();
 
                     for (String router : routerArray) {
@@ -123,7 +121,7 @@ public class CollectorQuery extends Query{
                             sb.append(";");
                         }
 
-                        sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + lookupValue(HeaderDefault.hash, i) + "' AND " + router_sql_in_list);
+                        sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + lookupValue(MsgBusFields.HASH, i) + "' AND " + router_sql_in_list);
                     }
                 }
             }

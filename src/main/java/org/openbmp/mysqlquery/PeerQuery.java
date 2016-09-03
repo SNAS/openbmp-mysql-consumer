@@ -3,11 +3,9 @@ package org.openbmp.mysqlquery;
 import java.util.List;
 import java.util.Map;
 
-import org.openbmp.api.parsed.message.HeaderDefault;
+import org.openbmp.api.parsed.message.MsgBusFields;
 
 public class PeerQuery extends Query{
-	
-	private List<Map<String, Object>> rowMap;
 	
 	public PeerQuery(List<Map<String, Object>> rowMap){
 		
@@ -45,33 +43,33 @@ public class PeerQuery extends Query{
                 sb.append(',');
 
             sb.append('(');
-            sb.append("'" + lookupValue(HeaderDefault.hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.router_hash, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.peer_rd, i) + "',");
-            sb.append(lookupValue(HeaderDefault.isIPv4, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.remote_ip, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.name, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.remote_bgp_id, i) + "',");
-            sb.append(lookupValue(HeaderDefault.remote_asn, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ROUTER_HASH, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.PEER_RD, i) + "',");
+            sb.append(lookupValue(MsgBusFields.IS_IPV4, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.REMOTE_IP, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.NAME, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.REMOTE_BGP_ID, i) + "',");
+            sb.append(lookupValue(MsgBusFields.REMOTE_ASN, i) + ",");
 
-            sb.append((((String)lookupValue(HeaderDefault.action, i)).equalsIgnoreCase("up") ? 1 : 0) + ",");
+            sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("up") ? 1 : 0) + ",");
 
-            sb.append(lookupValue(HeaderDefault.isL3VPN, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.timestamp, i) + "',");
-            sb.append(lookupValue(HeaderDefault.isPrePolicy, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.local_ip, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.local_bgp_id, i) + "',");
-            sb.append(lookupValue(HeaderDefault.local_port, i) + ",");
-            sb.append(lookupValue(HeaderDefault.adv_holddown, i) + ",");
-            sb.append(lookupValue(HeaderDefault.local_asn, i) + ",");
-            sb.append(lookupValue(HeaderDefault.remote_port, i) + ",");
-            sb.append(lookupValue(HeaderDefault.remote_holddown, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.adv_cap, i) + "',");
-            sb.append("'" + lookupValue(HeaderDefault.recv_cap, i) + "',");
-            sb.append(lookupValue(HeaderDefault.bmp_reason, i) + ",");
-            sb.append(lookupValue(HeaderDefault.bgp_error_code, i) + ",");
-            sb.append(lookupValue(HeaderDefault.bgp_error_sub_code, i) + ",");
-            sb.append("'" + lookupValue(HeaderDefault.error_text, i) + "'");
+            sb.append(lookupValue(MsgBusFields.IS_L3VPN, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "',");
+            sb.append(lookupValue(MsgBusFields.ISPREPOLICY, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.LOCAL_IP, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.LOCAL_BGP_ID, i) + "',");
+            sb.append(lookupValue(MsgBusFields.LOCAL_PORT, i) + ",");
+            sb.append(lookupValue(MsgBusFields.ADV_HOLDDOWN, i) + ",");
+            sb.append(lookupValue(MsgBusFields.LOCAL_ASN, i) + ",");
+            sb.append(lookupValue(MsgBusFields.REMOTE_PORT, i) + ",");
+            sb.append(lookupValue(MsgBusFields.REMOTE_HOLDDOWN, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.ADV_CAP, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.RECV_CAP, i) + "',");
+            sb.append(lookupValue(MsgBusFields.BMP_REASON, i) + ",");
+            sb.append(lookupValue(MsgBusFields.BGP_ERROR_CODE, i) + ",");
+            sb.append(lookupValue(MsgBusFields.BGP_ERROR_SUB_CODE, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.ERROR_TEXT, i) + "'");
 
             sb.append(')');
         }
@@ -101,17 +99,17 @@ public class PeerQuery extends Query{
                 sb.append(';');
 
             sb.append("UPDATE rib SET isWithdrawn = True WHERE peer_hash_id = '");
-            sb.append(rowMap.get(i).get("hash"));
+            sb.append(lookupValue(MsgBusFields.HASH, i));
             sb.append("' AND isWithdrawn = False");
 
             sb.append("; UPDATE ls_nodes SET isWithdrawn = True WHERE peer_hash_id = '");
-            sb.append(rowMap.get(i).get("hash"));
+            sb.append(lookupValue(MsgBusFields.HASH, i));
             sb.append("' AND isWithdrawn = False");
             sb.append("; UPDATE ls_links SET isWithdrawn = True WHERE peer_hash_id = '");
-            sb.append(rowMap.get(i).get("hash"));
+            sb.append(lookupValue(MsgBusFields.HASH, i));
             sb.append("' AND isWithdrawn = False");
             sb.append("; UPDATE ls_prefixes SET isWithdrawn = True WHERE peer_hash_id = '");
-            sb.append(rowMap.get(i).get("hash"));
+            sb.append(lookupValue(MsgBusFields.HASH, i));
             sb.append("' AND isWithdrawn = False");
 
         }
