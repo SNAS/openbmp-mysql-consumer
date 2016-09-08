@@ -42,11 +42,20 @@ You will need Java 1.7 or greater as well as maven 3.x or greater.
 #### Build
 You can build from source using maven as below:
 
+**Install openbmp-java-api-message dependency**
+    
+    git clone https://github.com/OpenBMP/openbmp-java-api-message.git
+    cd openbmp-api-message
+    mvn clean install
+
+**Build openbmp-mysql-consumer**
+
+    cd ../
     git clone https://github.com/OpenBMP/openbmp-mysql-consumer.git
     cd openbmp-mysql-consumer
     mvn -DskipTests=True clean package
     
-The above will create a JAR file under **target/**.  The JAR file is the complete package, which includes the dependancies. 
+> The above will create a JAR file under **target/**.  The JAR file is the complete package, which includes the dependancies. 
 
 Running
 -------
