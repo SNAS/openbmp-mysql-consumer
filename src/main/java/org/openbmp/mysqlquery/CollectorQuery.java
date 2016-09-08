@@ -1,67 +1,18 @@
-package org.openbmp.handler;
-/*
- * Copyright (c) 2015 Cisco Systems, Inc. and others.  All rights reserved.
- *
- * This program and the accompanying materials are made available under the
- * terms of the Eclipse Public License v1.0 which accompanies this distribution,
- * and is available at http://www.eclipse.org/legal/epl-v10.html
- *
- */
-import org.openbmp.processor.ParseNullAsEmpty;
-import org.openbmp.processor.ParseTimestamp;
-import org.supercsv.cellprocessor.ParseInt;
-import org.supercsv.cellprocessor.ParseLong;
-import org.supercsv.cellprocessor.constraint.NotNull;
-import org.supercsv.cellprocessor.ift.CellProcessor;
+package org.openbmp.mysqlquery;
 
+import java.util.List;
 import java.util.Map;
-import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Format class for collector parsed messages (openbmp.parsed.collector)
- *
- * Schema Version: 1
- *
- */
-public class Collector extends Base {
+import org.openbmp.api.parsed.message.MsgBusFields;
 
-    private static Map<String,TimerTask> heartbeatListeners;
-
-    /**
-     * Handle the message by parsing it and storing the data in memory.
-     *
-     * @param data
-     */
-    public Collector(String data) {
-        super();
-        headerNames = new String [] { "action", "seq", "admin_id", "hash", "routers", "router_count", "timestamp" };
-
-        parse(data);
-    }
-
-    /**
-     * Processors used for each field.
-     *
-     * Order matters and must match the same order as defined in headerNames
-     *
-     * @return array of cell processors
-     */
-    protected CellProcessor[] getProcessors() {
-
-        final CellProcessor[] processors = new CellProcessor[] {
-                new NotNull(),          // action
-                new ParseLong(),        // seq
-                new NotNull(),          // admin id
-                new NotNull(),          // hash
-                new ParseNullAsEmpty(), // routers
-                new ParseInt(),         // router count
-                new ParseTimestamp()    // Timestamp
-        };
-
-        return processors;
-    }
-
+public class CollectorQuery extends Query{
+	
+	public CollectorQuery(List<Map<String, Object>> rowMap){
+		
+		this.rowMap = rowMap;
+	}
+	
     /**
      * Generate MySQL insert/update statement, sans the values
      *
@@ -87,12 +38,12 @@ public class Collector extends Base {
             if (i > 0)
                 sb.append(',');
             sb.append('(');
-            sb.append("'" + rowMap.get(i).get("hash") + "',");
-            sb.append((((String)rowMap.get(i).get("action")).equalsIgnoreCase("stopped") ? "'down'" : "'up'") + ",");
-            sb.append("'" + rowMap.get(i).get("admin_id") + "',");
-            sb.append("'" + rowMap.get(i).get("routers") + "',");
-            sb.append(rowMap.get(i).get("router_count") + ",");
-            sb.append("'" + rowMap.get(i).get("timestamp") + "'");
+            sb.append("'" + lookupValue(MsgBusFields.HASH, i) + "',");
+            sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("stopped") ? "'down'" : "'up'") + ",");
+            sb.append("'" + lookupValue(MsgBusFields.ADMIN_ID, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.ROUTERS, i) + "',");
+            sb.append(lookupValue(MsgBusFields.ROUTER_COUNT, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
             sb.append(')');
         }
 
@@ -117,32 +68,32 @@ public class Collector extends Base {
 
         for (int i = 0; i < rowMap.size(); i++) {
 
-            String action = (String) rowMap.get(i).get("action");
+            String action = (String) lookupValue(MsgBusFields.ACTION, i);
 
             if (i > 0 && sb.length() > 0)
                 sb.append(';');
 
             if (action.equalsIgnoreCase("started") || action.equalsIgnoreCase("stopped")) {
                 sb.append("UPDATE routers SET isConnected = False WHERE collector_hash_id = '");
-                sb.append(rowMap.get(i).get("hash") + "'");
+                sb.append(lookupValue(MsgBusFields.HASH, i) + "'");
 
                 // Collector start/stopped should always have an empty router set
-                routerConMap.remove((String)rowMap.get(i).get("hash"));
+                routerConMap.remove((String)lookupValue(MsgBusFields.HASH, i));
 
             }
             else { // heartbeat or changed
 
                 // Add concurrent connection map for collector if it does not exist already
-                if (! routerConMap.containsKey((String)rowMap.get(i).get("hash"))) {
-                    routerConMap.put((String)rowMap.get(i).get("hash"), new ConcurrentHashMap<String, Integer>());
+                if (! routerConMap.containsKey((String)lookupValue(MsgBusFields.HASH, i))) {
+                    routerConMap.put((String)lookupValue(MsgBusFields.HASH, i), new ConcurrentHashMap<String, Integer>());
                     changed = Boolean.TRUE;
                 }
 
-                String[] routerArray = ((String) rowMap.get(i).get("routers")).split("[ ]*,[ ]*");
+                String[] routerArray = ((String) lookupValue(MsgBusFields.ROUTERS, i)).split("[ ]*,[ ]*");
 
                 if (routerArray.length > 0) {
                     // Update the router list
-                    Map<String, Integer> routerMap = routerConMap.get((String) rowMap.get(i).get("hash"));
+                    Map<String, Integer> routerMap = routerConMap.get((String) lookupValue(MsgBusFields.HASH, i));
                     routerMap.clear();
 
                     for (String router : routerArray) {
@@ -170,7 +121,7 @@ public class Collector extends Base {
                             sb.append(";");
                         }
 
-                        sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + rowMap.get(i).get("hash") + "' AND " + router_sql_in_list);
+                        sb.append("UPDATE routers SET isConnected = True WHERE collector_hash_id = '" + lookupValue(MsgBusFields.HASH, i) + "' AND " + router_sql_in_list);
                     }
                 }
             }
@@ -178,5 +129,6 @@ public class Collector extends Base {
 
         return sb.toString();
     }
+
 
 }
