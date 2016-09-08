@@ -103,13 +103,3 @@ Configuration:
 ```
 
 
-
-TODO
--------------------------
-
-* Add command line option to adjust the offset to tail of stream.  This is to bypass catching up on startup
-* See if we can expose the tail offset value and the current offset value that the consumer is reading.  This can allow the ability to report via log progress on catching up
-* Add support for multiple partitions/load balancing
-
-
-
