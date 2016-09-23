@@ -53,7 +53,7 @@ public class BaseAttributeQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.AGGREGATOR, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.COMMUNITY_LIST, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.EXT_COMMUNITY_LIST, i) + "',");
-            sb.append("'" + lookupValue(MsgBusFields.COMMUNITY_LIST, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.CLUSTER_LIST, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.ORIGINATOR_ID, i) + "',");
             sb.append(lookupValue(MsgBusFields.AS_PATH_COUNT, i) + ",");
             sb.append(lookupValue(MsgBusFields.IS_NEXTHOP_IPV4, i) + ",");
