@@ -48,7 +48,7 @@ public class LsNodeQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.BASE_ATTR_HASH, i) + "',");
             sb.append(lookupValue(MsgBusFields.PEER_ASN, i) + ",");
             sb.append(lookupValue(MsgBusFields.ROUTING_ID, i) + ",");
-            sb.append("X'" + lookupValue(MsgBusFields.LS_ID, i) + "',");
+            sb.append("0x" + lookupValue(MsgBusFields.LS_ID, i) + ",");
             sb.append("'" + lookupValue(MsgBusFields.IGP_ROUTER_ID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.OSPF_AREA_ID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.PROTOCOL, i) + "',");
