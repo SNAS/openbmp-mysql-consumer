@@ -97,7 +97,7 @@ public class LsLinkQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.REMOTE_IGP_ROUTER_ID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.REMOTE_ROUTER_ID, i) + "',");
             sb.append(lookupValue(MsgBusFields.REMOTE_NODE_ASN, i) + ",");
-            sb.append("'" + lookupValue(MsgBusFields.PEER_NODE_SID, i) + "'");
+            sb.append("'" + lookupValue(MsgBusFields.PEER_NODE_SID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.LS_ADJACENCY_SID, i) + "'");
 
             sb.append(')');

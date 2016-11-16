@@ -4,7 +4,7 @@
   <groupId>org.openbmp</groupId>
   <artifactId>openbmp-mysql-consumer</artifactId>
   <name>openbmp-mysql-consumer</name>
-  <version>0.1.0-${build.number}</version>
+  <version>0.2.0-${build.number}</version>
   <url>http://maven.apache.org</url>
   <build>
     <plugins>
@@ -61,9 +61,13 @@
     </dependency>
   </dependencies>
   <properties>
+    <jackson-yaml.version>2.7.8</jackson-yaml.version>
     <build.number>SNAPSHOT</build.number>
+    <mariadb.version>1.5.4</mariadb.version>
+    <log4j.version>2.7</log4j.version>
+    <openbmp-api.version>0.1.0-SNAPSHOT</openbmp-api.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <kafka.version>0.8.2.2</kafka.version>
+    <kafka.version>0.10.0.1</kafka.version>
   </properties>
 </project>
 

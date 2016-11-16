@@ -72,7 +72,7 @@ public class LsPrefixQuery extends Query{
 				sb.append("'" + lookupValue(MsgBusFields.OSPF_FWD_ADDR, i) + "',");
 
 				sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
-				sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
+				sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "',");
                 sb.append("'" + lookupValue(MsgBusFields.LS_PREFIX_SID, i) + "'");
 
 				sb.append(')');

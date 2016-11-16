@@ -71,7 +71,7 @@ public class LsNodeQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.MT_ID, i) + "',");
 
             sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
-            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
+            sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.LS_SR_CAPABILITIES, i) + "'");
 
             sb.append(')');
