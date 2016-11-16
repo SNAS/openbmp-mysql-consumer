@@ -27,7 +27,7 @@ public class LsLinkQuery extends Query{
                            "neighbor_addr,isIPv4,protocol,local_link_id,remote_link_id,local_node_hash_id,remote_node_hash_id," +
                            "admin_group,max_link_bw,max_resv_bw,unreserved_bw,te_def_metric,protection_type,mpls_proto_mask," +
                            "igp_metric,srlg,name,isWithdrawn,timestamp,local_igp_router_id,local_router_id," +
-                           "local_asn,remote_igp_router_id,remote_router_id,remote_asn,peer_node_sid) VALUES ",
+                           "local_asn,remote_igp_router_id,remote_router_id,remote_asn,peer_node_sid, sr_adjacency_sids) VALUES ",
 
                            " " };
         return stmt;
@@ -98,6 +98,7 @@ public class LsLinkQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.REMOTE_ROUTER_ID, i) + "',");
             sb.append(lookupValue(MsgBusFields.REMOTE_NODE_ASN, i) + ",");
             sb.append("'" + lookupValue(MsgBusFields.PEER_NODE_SID, i) + "'");
+            sb.append("'" + lookupValue(MsgBusFields.LS_ADJACENCY_SID, i) + "'");
 
             sb.append(')');
         }

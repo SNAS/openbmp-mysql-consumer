@@ -25,7 +25,7 @@ public class Config {
     private Options options = new Options();
 
     /// Config variables
-    private String zookeeperAddress = "localhost:2181";
+    private String bootstrapServer = "localhost:9092";
     private String groupId = "openbmp-mysql-consumer";
     private String clientId = null;
     private Integer expected_heartbeat_interval = 330000;
@@ -46,7 +46,7 @@ public class Config {
     }
 
     protected Config() {
-        options.addOption("zk", "zookeeper", true, "Zookeeper hostanme:port (default is localhost:2181)");
+        options.addOption("b", "bootstrap", true, "Bootstrap servers hostanme:port (default is localhost:9092)");
         options.addOption("g", "group.id", true, "Kafka group ID (default is openbmp-mysql-consumer)");
         options.addOption("c", "client.id", true, "Kafka client ID (default uses group.id");
         options.addOption("ol", "offset_largest", false, "Set offset to largest when offset is not known");
@@ -79,8 +79,8 @@ public class Config {
                 System.exit(0);
             }
 
-            if (cmd.hasOption("zk"))
-                zookeeperAddress = cmd.getOptionValue("zk");
+            if (cmd.hasOption("b"))
+                bootstrapServer = cmd.getOptionValue("b");
 
             if (cmd.hasOption("ol"))
                 offsetLargest = Boolean.TRUE;
@@ -133,8 +133,9 @@ public class Config {
         fmt.printHelp(80, mainClassName, "\nOPTIONS:", options, "\n");
     }
 
-    String getZookeeperAddress() {
-        return zookeeperAddress;
+
+    String getBootstrapServer() {
+        return bootstrapServer;
     }
 
     String getClientId() {

@@ -25,7 +25,8 @@ public class LsPrefixQuery extends Query{
     public String[] genInsertStatement() {
         String [] stmt = { " REPLACE INTO ls_prefixes (hash_id,peer_hash_id, path_attr_hash_id,id,local_node_hash_id," +
                            "mt_id,protocol,prefix,prefix_len,prefix_bin,prefix_bcast_bin,ospf_route_type," +
-                           "igp_flags,isIPv4,route_tag,ext_route_tag,metric,ospf_fwd_addr,isWithdrawn,timestamp) VALUES ",
+                           "igp_flags,isIPv4,route_tag,ext_route_tag,metric,ospf_fwd_addr,isWithdrawn,timestamp," +
+						   "sr_prefix_sids) VALUES ",
 
                            " " };
         return stmt;
@@ -72,6 +73,7 @@ public class LsPrefixQuery extends Query{
 
 				sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
 				sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
+                sb.append("'" + lookupValue(MsgBusFields.LS_PREFIX_SID, i) + "'");
 
 				sb.append(')');
             

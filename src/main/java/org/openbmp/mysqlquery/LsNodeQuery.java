@@ -24,7 +24,8 @@ public class LsNodeQuery extends Query{
      */
     public String[] genInsertStatement() {
         String [] stmt = { " REPLACE  INTO ls_nodes (hash_id,peer_hash_id, path_attr_hash_id,asn,id,bgp_ls_id,igp_router_id," +
-                           "ospf_area_id,protocol,router_id,isis_area_id,flags,name,mt_ids,isWithdrawn,timestamp) VALUES ",
+                           "ospf_area_id,protocol,router_id,isis_area_id,flags,name,mt_ids,isWithdrawn,timestamp," +
+                            "sr_capabilities) VALUES ",
 
                            " " };
         return stmt;
@@ -47,7 +48,7 @@ public class LsNodeQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.BASE_ATTR_HASH, i) + "',");
             sb.append(lookupValue(MsgBusFields.PEER_ASN, i) + ",");
             sb.append(lookupValue(MsgBusFields.ROUTING_ID, i) + ",");
-            sb.append(lookupValue(MsgBusFields.LS_ID, i) + ",");
+            sb.append("X'" + lookupValue(MsgBusFields.LS_ID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.IGP_ROUTER_ID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.OSPF_AREA_ID, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.PROTOCOL, i) + "',");
@@ -71,6 +72,7 @@ public class LsNodeQuery extends Query{
 
             sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
             sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "'");
+            sb.append("'" + lookupValue(MsgBusFields.LS_SR_CAPABILITIES, i) + "'");
 
             sb.append(')');
         }

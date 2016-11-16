@@ -114,7 +114,7 @@ public class PeerQuery extends Query{
 
         }
 
-        sb.append("SET @TRIGGER_DISABLED=FALSE; ");
+        sb.append("; SET @TRIGGER_DISABLED=FALSE; ");
 
         return sb.toString();
     }

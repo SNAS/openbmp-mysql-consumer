@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 Cisco Systems, Inc. and others.  All rights reserved.
+ * Copyright (c) 2015-2016 Cisco Systems, Inc. and others.  All rights reserved.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v1.0 which accompanies this distribution,
@@ -20,9 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,17 +32,11 @@ import org.apache.logging.log4j.Logger;
  */
 public class MySQLConsumerApp
 {
-    // TODO: Will change the below to match partitions, but for now only one thread per topic is used.
-    private final Integer THREADS_PER_TOPIC = 1;
-
-    private final Integer RETRY_DELAY = 1500;               // In milliseconds
-
     private static final Logger logger = LogManager.getFormatterLogger(MySQLConsumerApp.class.getName());
-    private ConsumerConnector consumer;
     private ExecutorService executor;
     private final Config cfg;
-    private static List<MySQLConsumer> _threads;
-    private final Lock global_lock;
+    private List<MySQLConsumerRunnable> consumerThreads;
+
 
     /**
      * routerConMap is a persistent map of collectors and routers. It's a hash of hashes.
@@ -58,50 +51,17 @@ public class MySQLConsumerApp
     public MySQLConsumerApp(Config cfg) {
 
         this.cfg = cfg;
-        consumer = null;
-        _threads = new ArrayList<MySQLConsumer>();
+        consumerThreads = new ArrayList<>();
         routerConMap = new ConcurrentHashMap<String, Map<String, Integer>>();
-        global_lock = new ReentrantLock();
 
-        Boolean reconnect = true;
-
-        logger.debug("Connecting to kafka/zookeeper: %s", cfg.getZookeeperAddress());
-
-        // Connect to kafka/zookeeper - retry if needed
-        while (reconnect) {
-            try {
-                consumer = kafka.consumer.Consumer.createJavaConsumerConnector(
-                        createConsumerConfig(cfg.getZookeeperAddress(), cfg.getClientId(), cfg.getGroupId(),
-                                             cfg.getOffsetLargest()));
-
-                reconnect = false;
-                logger.debug("Connected to kafka/zookeeper: %s", cfg.getZookeeperAddress());
-
-            } catch (org.I0Itec.zkclient.exception.ZkTimeoutException ex) {
-                logger.warn("Timeout connecting to zookeeper, will retry.");
-                try {
-                    Thread.sleep(RETRY_DELAY);
-                } catch (InterruptedException iex) {
-                    reconnect = false;
-                }
-
-            } catch (org.I0Itec.zkclient.exception.ZkException zex) {
-                System.out.println("Failed connection, check hostname/ip: " + zex.getMessage());
-                logger.error("Failed connection, check hostanme/ip or zookeeper server: %s",
-                        zex.getMessage());
-                reconnect = false;
-            }
-        }
-    }
-
-    Boolean isConnected() {
-        return consumer != null ? true : false;
     }
 
     public void shutdown() {
         logger.debug("Shutting down MySQL consumer app");
 
-        if (consumer != null) consumer.shutdown();
+        for (MySQLConsumerRunnable thr: consumerThreads) {
+            thr.shutdown();
+        }
 
         if (executor != null) executor.shutdown();
         try {
@@ -114,64 +74,53 @@ public class MySQLConsumerApp
     }
 
     public void run() {
-        Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
+        List<String> topics = new ArrayList<String>();
 
-        // Add topics and number of threads to use per topic
-        topicCountMap.put("openbmp.parsed.collector", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.router", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.peer", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.base_attribute", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.unicast_prefix", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.bmp_stat", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.ls_node", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.ls_link", new Integer(THREADS_PER_TOPIC));
-        topicCountMap.put("openbmp.parsed.ls_prefix", new Integer(THREADS_PER_TOPIC));
+        topics.add("openbmp.parsed.collector");
+        topics.add("openbmp.parsed.router");
+        topics.add("openbmp.parsed.peer");
+        topics.add("openbmp.parsed.base_attribute");
+        topics.add("openbmp.parsed.bmp_stat");
+        topics.add("openbmp.parsed.unicast_prefix");
+        topics.add("openbmp.parsed.ls_node");
+        topics.add("openbmp.parsed.ls_link");
+        topics.add("openbmp.parsed.ls_prefix");
 
-        logger.info("Creating/attaching %d topics and getting offsets. This can take a while, please wait...", topicCountMap.size());
-        Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumer.createMessageStreams(topicCountMap);
+        int numConsumerThreads = 1;
+        executor = Executors.newFixedThreadPool(numConsumerThreads);
 
-        // Init thread pool
-        executor = Executors.newFixedThreadPool(topicCountMap.size() * THREADS_PER_TOPIC);
-
-        logger.info("Starting %d consumer threads", THREADS_PER_TOPIC * topicCountMap.size());
-
-        // Start threads to service the topicss
-        int threadNumber = 0;
-        for (Map.Entry<String,Integer> topic : topicCountMap.entrySet()) {
-
-            List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic.getKey());
-
-            for (final KafkaStream stream : streams) {
-                _threads.add(threadNumber, new MySQLConsumer(stream, threadNumber, cfg, topic.getKey(),
-                                                             routerConMap, global_lock));
-
-                executor.submit(_threads.get(threadNumber));
-                threadNumber++;
-            }
+        for (int i=0; i < numConsumerThreads; i++) {
+            MySQLConsumerRunnable consumer = new MySQLConsumerRunnable(createConsumerConfig(cfg), topics, cfg, routerConMap);
+            executor.submit(consumer);
+            consumerThreads.add(consumer);
         }
+
+
     }
 
-    private static ConsumerConfig createConsumerConfig(String zk_addr, String clientId, String groupId,
-                                                       Boolean offsetLargest) {
+    private static Properties createConsumerConfig(Config cfg) {
         Properties props = new Properties();
-        props.put("zookeeper.connect", zk_addr);
-        props.put("group.id", groupId);
-        props.put("client.id", clientId != null ? groupId : clientId);
-        props.put("zookeeper.session.timeout.ms", "500");
-        props.put("zookeeper.sync.time.ms", "200");
-        props.put("auto.commit.interval.ms", "1000");
-        //props.put("consumer.timeout.ms", "100");            // Non-blocking for stream.it.hasNext()
+        props.put("bootstrap.servers", cfg.getBootstrapServer());
+        props.put("group.id", cfg.getGroupId());
+        props.put("client.id", cfg.getClientId() != null ? cfg.getClientId() : cfg.getGroupId());
+        props.put("key.deserializer", StringDeserializer.class.getName());
+        props.put("value.deserializer", StringDeserializer.class.getName());
+        props.put("session.timeout.ms", "16000");
+        props.put("max.partition.fetch.bytes", "2000000");
+        props.put("heartbeat.interval.ms", "10000");
+        props.put("enable.auto.commit", "true");
 
-        if (offsetLargest == Boolean.FALSE) {
+        if (cfg.getOffsetLargest() == Boolean.FALSE) {
             logger.info("Using smallest for Kafka offset reset");
-            props.put("auto.offset.reset", "smallest");
+            props.put("auto.offset.reset", "earliest");
         } else {
             logger.info("Using largest for Kafka offset reset");
-            props.put("auto.offset.reset", "largest");
+            props.put("auto.offset.reset", "latest");
         }
 
-        return new ConsumerConfig(props);
+        return props;
     }
+
 
     public static void main(String[] args) {
         Config cfg = Config.getInstance();
@@ -193,32 +142,45 @@ public class MySQLConsumerApp
 
         MySQLConsumerApp mysqlApp = new MySQLConsumerApp(cfg);
 
-        if (mysqlApp.isConnected()) {
-            mysqlApp.run();
+        mysqlApp.run();
 
-            try {
-                while (true) {
-                    if (cfg.getStatsInterval() > 0) {
-                        Thread.sleep(cfg.getStatsInterval() * 1000);
+        try {
+            while (true) {
+                if (cfg.getStatsInterval() > 0) {
+                    Thread.sleep(cfg.getStatsInterval() * 1000);
 
-                        /*
-                         * Print stats for each thread
-                         */
-                        for (int i = 0; i < _threads.size(); i++ ) {
-                            logger.info("STAT: thread %d read: %10d queue: %10d topics: %s",
-                                        i, _threads.get(i).getMessageCount(),
-                                        _threads.get(i).getQueueSize(),
-                                        _threads.get(i).getTopics());
-                        }
-
-                    } else {
-                        Thread.sleep(15000);
+                    for (int i = 0; i < mysqlApp.consumerThreads.size(); i++ ) {
+                        logger.info("-- STATS --   thread: %d  read: %-10d  queue: %-10d",
+                                    i, mysqlApp.consumerThreads.get(i).getMessageCount(),
+                                    mysqlApp.consumerThreads.get(i).getQueueSize());
+                        logger.info("           collector messages: %d",
+                                mysqlApp.consumerThreads.get(i).getCollector_msg_count());
+                        logger.info("              router messages: %d",
+                                mysqlApp.consumerThreads.get(i).getRouter_msg_count());
+                        logger.info("                peer messages: %d",
+                                mysqlApp.consumerThreads.get(i).getPeer_msg_count());
+                        logger.info("             reports messages: %d",
+                                mysqlApp.consumerThreads.get(i).getStat_msg_count());
+                        logger.info("      base attribute messages: %d",
+                                mysqlApp.consumerThreads.get(i).getBase_attribute_msg_count());
+                        logger.info("      unicast prefix messages: %d",
+                                mysqlApp.consumerThreads.get(i).getUnicast_prefix_msg_count());
+                        logger.info("             LS node messages: %d",
+                                mysqlApp.consumerThreads.get(i).getLs_node_msg_count());
+                        logger.info("             LS link messages: %d",
+                                mysqlApp.consumerThreads.get(i).getLs_link_msg_count());
+                        logger.info("           LS prefix messages: %d",
+                                mysqlApp.consumerThreads.get(i).getLs_prefix_msg_count());
                     }
-                }
-            } catch (InterruptedException ie) {
 
+                } else {
+                    Thread.sleep(15000);
+                }
             }
-            mysqlApp.shutdown();
+        } catch (InterruptedException ie) {
+
         }
+
+        mysqlApp.shutdown();
     }
 }

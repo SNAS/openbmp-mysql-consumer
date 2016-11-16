@@ -10,7 +10,7 @@ import junit.framework.TestSuite;
 /**
  * Unit test for simple MySQLConsumerApp.
  */
-public class MySQLConsumerAppTest
+public class MySQLConsumerRunnableAppTest
     extends TestCase
 {
     /**
@@ -18,7 +18,7 @@ public class MySQLConsumerAppTest
      *
      * @param testName name of the test case
      */
-    public MySQLConsumerAppTest(String testName)
+    public MySQLConsumerRunnableAppTest(String testName)
     {
         super(testName);
     }
@@ -28,7 +28,7 @@ public class MySQLConsumerAppTest
      */
     public static Test suite()
     {
-        return new TestSuite( MySQLConsumerAppTest.class );
+        return new TestSuite( MySQLConsumerRunnableAppTest.class );
     }
 
     public void testIpToBits()
