@@ -108,6 +108,8 @@ public class MySQLConsumerApp
         props.put("session.timeout.ms", "16000");
         props.put("max.partition.fetch.bytes", "2000000");
         props.put("heartbeat.interval.ms", "10000");
+        props.put("max.poll.records", "2000");
+
         props.put("enable.auto.commit", "true");
 
         if (cfg.getOffsetLargest() == Boolean.FALSE) {

@@ -8,14 +8,14 @@
  */
 package org.openbmp;
 
-import kafka.consumer.ConsumerIterator;
-import kafka.message.MessageAndMetadata;
-
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
+import org.apache.kafka.common.internals.TopicConstants;
 import org.openbmp.api.parsed.message.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -32,10 +32,7 @@ import org.openbmp.mysqlquery.UnicastPrefixQuery;
 import sun.security.util.BigInt;
 
 import java.math.BigInteger;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -101,6 +98,8 @@ public class MySQLConsumerRunnable implements Runnable {
         this.cfg = cfg;
         this.routerConMap = routerConMap;
 
+        this.running = false;
+
         /*
          * Start MySQL Writer thread - only one thread is needed
          */
@@ -128,12 +127,19 @@ public class MySQLConsumerRunnable implements Runnable {
             logger.warn("Interrupted during shutdown, exiting uncleanly");
         }
 
-        if (consumer != null)
-            consumer.close();
+        close_consumer();
 
         synchronized (running) {
             running = false;
         }
+    }
+
+    private void close_consumer() {
+        if (consumer != null) {
+            consumer.close();
+            consumer = null;
+        }
+
     }
 
     /**
@@ -145,6 +151,8 @@ public class MySQLConsumerRunnable implements Runnable {
         boolean status = false;
 
         try {
+            close_consumer();
+
             consumer = new KafkaConsumer<>(this.props);
             logger.info("Connected to kafka, subscribing to topics");
 
@@ -152,6 +160,7 @@ public class MySQLConsumerRunnable implements Runnable {
                     new ConsumerRebalanceListener(consumer);
 
             consumer.subscribe(topics,  rebalanceListener);
+
             for (String topic: topics) {
                 logger.info("Subscribed to topic: %s", topic);
             }
@@ -163,11 +172,21 @@ public class MySQLConsumerRunnable implements Runnable {
 
         } catch (KafkaException ex) {
             logger.error("Exception: %s", ex.getMessage(), ex);
+
         } finally {
             return status;
         }
 
     }
+
+    private void pause() {
+        consumer.pause(consumer.assignment());
+    }
+
+    private void resume() {
+        consumer.resume(consumer.paused());
+    }
+
 
     /**
      * Run the thread
@@ -210,9 +229,15 @@ public class MySQLConsumerRunnable implements Runnable {
             }
 
             try {
-                ConsumerRecords<String, String> records = consumer.poll(500);
+                ConsumerRecords<String, String> records = consumer.poll(100);
 
-                logger.debug("feteched records: %d", records.count());
+                if (records == null || records.count() <= 0)
+                    continue;
+
+                /*
+                 * Pause collection so that consumer.poll() doesn't fetch but will send heartbeats
+                 */
+                pause();
 
                 for (ConsumerRecord<String, String> record : records) {
                     messageCount = messageCount.add(BigInteger.ONE);
@@ -247,14 +272,9 @@ public class MySQLConsumerRunnable implements Runnable {
                             Map<String, String> router_update = new HashMap<>();
                             router_update.put("query", sql);
 
-                            // block if space is not available
-                            try {
-                                logger.debug("Added router disconnect correction to queue: size = %d", writerQueue.size());
-                                writerQueue.put(router_update);
+                            logger.debug("Added router disconnect correction to queue: size = %d", writerQueue.size());
+                            sendToWriter(router_update);
 
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
                         }
 
                     } else if (record.topic().equals("openbmp.parsed.router")) {
@@ -275,14 +295,8 @@ public class MySQLConsumerRunnable implements Runnable {
                             Map<String, String> peer_update = new HashMap<>();
                             peer_update.put("query", sql);
 
-                            // block if space is not available
-                            try {
-                                logger.debug("Added peer disconnect correction to queue: size = %d", writerQueue.size());
-                                writerQueue.put(peer_update);
-
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+                            logger.debug("Added peer disconnect correction to queue: size = %d", writerQueue.size());
+                            sendToWriter(peer_update);
                         }
 
                     } else if (record.topic().equals("openbmp.parsed.peer")) {
@@ -298,15 +312,9 @@ public class MySQLConsumerRunnable implements Runnable {
                         Map<String, String> rib_update = new HashMap<String, String>();
                         rib_update.put("query", peerQuery.genRibPeerUpdate());
 
-                        // block if space is not available
-                        try {
-                            logger.debug("Processed peer %s / %s", peerQuery.genValuesStatement(), peerQuery.genRibPeerUpdate());
-                            logger.debug("Added peer rib update message to queue: size = %d", writerQueue.size());
-                            writerQueue.put(rib_update);
-
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
+                        logger.debug("Processed peer %s / %s", peerQuery.genValuesStatement(), peerQuery.genRibPeerUpdate());
+                        logger.debug("Added peer rib update message to queue: size = %d", writerQueue.size());
+                        sendToWriter(rib_update);
 
                     } else if (record.topic().equals("openbmp.parsed.base_attribute")) {
                         logger.trace("Parsing base_attribute message");
@@ -328,13 +336,8 @@ public class MySQLConsumerRunnable implements Runnable {
 
                             analysis_query.put("value", values);
 
-                            // block if space is not available
-                            try {
-                                logger.trace("Added as_path_analysis message to queue: size = %d", writerQueue.size());
-                                writerQueue.put(analysis_query);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+                            logger.trace("Added as_path_analysis message to queue: size = %d", writerQueue.size());
+                            sendToWriter(analysis_query);
                         }
 
                         // add community_analysis
@@ -346,12 +349,9 @@ public class MySQLConsumerRunnable implements Runnable {
                             analysis_query.put("suffix", ins[1]);
 
                             analysis_query.put("value", values);
-                            try {
-                                logger.trace("Added community_analysis message to queue: size = %d", writerQueue.size());
-                                writerQueue.put(analysis_query);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+
+                            logger.trace("Added community_analysis message to queue: size = %d", writerQueue.size());
+                            sendToWriter(analysis_query);
                         }
 
                     } else if (record.topic().equals("openbmp.parsed.unicast_prefix")) {
@@ -409,23 +409,23 @@ public class MySQLConsumerRunnable implements Runnable {
                             query.put("value", values);
 
                             // block if space is not available
-                            try {
-                                writerQueue.put(query);
-
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+                            sendToWriter(query);
                         }
                     }
                 }
+
+                resume();
 
                 if (writerQueue.size() > 500 && System.currentTimeMillis() - prev_time > 10000) {
                     logger.info("Thread writer queue is %d", writerQueue.size());
                     prev_time = System.currentTimeMillis();
                 }
+
             } catch (Exception ex) {
                 logger.warn("kafka consumer exception: ", ex);
-                consumer.close();
+
+                close_consumer();
+
                 running = false;
             }
 
@@ -433,6 +433,19 @@ public class MySQLConsumerRunnable implements Runnable {
 
         shutdown();
         logger.debug("MySQL consumer thread finished");
+    }
+
+    private void sendToWriter(Map<String, String> query) {
+
+        while (writerQueue.offer(query) == false) {
+
+            consumer.poll(1);
+            try {
+                Thread.sleep(10);
+            } catch (Exception ex) {
+                break;
+            }
+        }
     }
 
     public synchronized boolean isRunning() { return running; }
