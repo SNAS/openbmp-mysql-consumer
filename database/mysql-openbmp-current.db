@@ -1050,6 +1050,8 @@ SET character_set_client = utf8;
   `mpls_proto_mask` tinyint NOT NULL,
   `srlg` tinyint NOT NULL,
   `name` tinyint NOT NULL,
+  `sr_adjacency_sids` tinyint NOT NULL,
+  `sr_capabilities` tinyint NOT NULL,
   `timestamp` tinyint NOT NULL,
   `local_node_hash_id` tinyint NOT NULL,
   `remote_node_hash_id` tinyint NOT NULL,
@@ -1089,6 +1091,7 @@ SET character_set_client = utf8;
   `MED` tinyint NOT NULL,
   `NH` tinyint NOT NULL,
   `mt_id` tinyint NOT NULL,
+  `sr_capabilities` tinyint NOT NULL,
   `hash_id` tinyint NOT NULL,
   `path_attr_hash_id` tinyint NOT NULL,
   `peer_hash_id` tinyint NOT NULL,
@@ -1115,6 +1118,8 @@ SET character_set_client = utf8;
   `ospf_route_type` tinyint NOT NULL,
   `metric` tinyint NOT NULL,
   `protocol` tinyint NOT NULL,
+  `sr_prefix_sids` tinyint NOT NULL,
+  `sr_capabilities` tinyint NOT NULL,
   `timestamp` tinyint NOT NULL,
   `prefix_bcast_bin` tinyint NOT NULL,
   `prefix_bin` tinyint NOT NULL,
@@ -1458,7 +1463,7 @@ SUBPARTITIONS 32
 /*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_ls_links` AS select `localn`.`name` AS `Local_Router_Name`,`remoten`.`name` AS `Remote_Router_Name`,`localn`.`igp_router_id` AS `Local_IGP_RouterId`,`localn`.`router_id` AS `Local_RouterId`,`remoten`.`igp_router_id` AS `Remote_IGP_RouterId`,`remoten`.`router_id` AS `Remote_RouterId`,`localn`.`bgp_ls_id` AS `bgpls_id`,if((`ln`.`protocol` in ('OSPFv2','OSPFv3')),`localn`.`ospf_area_id`,`localn`.`isis_area_id`) AS `AreaId`,`ln`.`mt_id` AS `MT_ID`,`ln`.`interface_addr` AS `InterfaceIP`,`ln`.`neighbor_addr` AS `NeighborIP`,`ln`.`isIPv4` AS `isIPv4`,`ln`.`protocol` AS `protocol`,`ln`.`igp_metric` AS `igp_metric`,`ln`.`local_link_id` AS `local_link_id`,`ln`.`remote_link_id` AS `remote_link_id`,`ln`.`admin_group` AS `admin_group`,`ln`.`max_link_bw` AS `max_link_bw`,`ln`.`max_resv_bw` AS `max_resv_bw`,`ln`.`unreserved_bw` AS `unreserved_bw`,`ln`.`te_def_metric` AS `te_def_metric`,`ln`.`mpls_proto_mask` AS `mpls_proto_mask`,`ln`.`srlg` AS `srlg`,`ln`.`name` AS `name`,`ln`.`timestamp` AS `timestamp`,`ln`.`local_node_hash_id` AS `local_node_hash_id`,`ln`.`remote_node_hash_id` AS `remote_node_hash_id`,`localn`.`igp_router_id` AS `localn_igp_router_id_bin`,`remoten`.`igp_router_id` AS `remoten_igp_router_id_bin`,`ln`.`path_attr_hash_id` AS `path_attr_hash_id`,`ln`.`peer_hash_id` AS `peer_hash_id` from ((`ls_links` `ln` join `ls_nodes` `localn` on(((`ln`.`local_node_hash_id` = `localn`.`hash_id`) and (`ln`.`peer_hash_id` = `localn`.`peer_hash_id`) and (`localn`.`isWithdrawn` = 0)))) join `ls_nodes` `remoten` on(((`ln`.`remote_node_hash_id` = `remoten`.`hash_id`) and (`ln`.`peer_hash_id` = `remoten`.`peer_hash_id`) and (`remoten`.`isWithdrawn` = 0)))) where (`ln`.`isWithdrawn` = 0) */;
+/*!50001 VIEW `v_ls_links` AS select `localn`.`name` AS `Local_Router_Name`,`remoten`.`name` AS `Remote_Router_Name`,`localn`.`igp_router_id` AS `Local_IGP_RouterId`,`localn`.`router_id` AS `Local_RouterId`,`remoten`.`igp_router_id` AS `Remote_IGP_RouterId`,`remoten`.`router_id` AS `Remote_RouterId`,`localn`.`bgp_ls_id` AS `bgpls_id`,if((`ln`.`protocol` in ('OSPFv2','OSPFv3')),`localn`.`ospf_area_id`,`localn`.`isis_area_id`) AS `AreaId`,`ln`.`mt_id` AS `MT_ID`,`ln`.`interface_addr` AS `InterfaceIP`,`ln`.`neighbor_addr` AS `NeighborIP`,`ln`.`isIPv4` AS `isIPv4`,`ln`.`protocol` AS `protocol`,`ln`.`igp_metric` AS `igp_metric`,`ln`.`local_link_id` AS `local_link_id`,`ln`.`remote_link_id` AS `remote_link_id`,`ln`.`admin_group` AS `admin_group`,`ln`.`max_link_bw` AS `max_link_bw`,`ln`.`max_resv_bw` AS `max_resv_bw`,`ln`.`unreserved_bw` AS `unreserved_bw`,`ln`.`te_def_metric` AS `te_def_metric`,`ln`.`mpls_proto_mask` AS `mpls_proto_mask`,`ln`.`srlg` AS `srlg`,`ln`.`name` AS `name`,`ln`.`sr_adjacency_sids` AS `sr_adjacency_sids`,`localn`.`sr_capabilities` AS `sr_capabilities`,`ln`.`timestamp` AS `timestamp`,`ln`.`local_node_hash_id` AS `local_node_hash_id`,`ln`.`remote_node_hash_id` AS `remote_node_hash_id`,`localn`.`igp_router_id` AS `localn_igp_router_id_bin`,`remoten`.`igp_router_id` AS `remoten_igp_router_id_bin`,`ln`.`path_attr_hash_id` AS `path_attr_hash_id`,`ln`.`peer_hash_id` AS `peer_hash_id` from ((`ls_links` `ln` join `ls_nodes` `localn` on(((`ln`.`local_node_hash_id` = `localn`.`hash_id`) and (`ln`.`peer_hash_id` = `localn`.`peer_hash_id`) and (`localn`.`isWithdrawn` = 0)))) join `ls_nodes` `remoten` on(((`ln`.`remote_node_hash_id` = `remoten`.`hash_id`) and (`ln`.`peer_hash_id` = `remoten`.`peer_hash_id`) and (`remoten`.`isWithdrawn` = 0)))) where (`ln`.`isWithdrawn` = 0) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -1472,12 +1477,12 @@ SUBPARTITIONS 32
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
 /*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8mb4 */;
-/*!50001 SET character_set_results     = utf8mb4 */;
-/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 SET character_set_client      = utf8 */;
+/*!50001 SET character_set_results     = utf8 */;
+/*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_ls_nodes` AS select `r`.`name` AS `RouterName`,`r`.`ip_address` AS `RouterIP`,`p`.`name` AS `PeerName`,`p`.`peer_addr` AS `PeerIP`,`ls_nodes`.`igp_router_id` AS `IGP_RouterId`,`ls_nodes`.`name` AS `NodeName`,if((`ls_nodes`.`protocol` like 'OSPF%'),`ls_nodes`.`igp_router_id`,`ls_nodes`.`router_id`) AS `RouterId`,`ls_nodes`.`id` AS `id`,`ls_nodes`.`bgp_ls_id` AS `bgpls_id`,`ls_nodes`.`ospf_area_id` AS `OspfAreaId`,`ls_nodes`.`isis_area_id` AS `ISISAreaId`,`ls_nodes`.`protocol` AS `protocol`,`ls_nodes`.`flags` AS `flags`,`ls_nodes`.`timestamp` AS `timestamp`,`ls_nodes`.`asn` AS `asn`,`path_attrs`.`as_path` AS `AS_Path`,`path_attrs`.`local_pref` AS `LocalPref`,`path_attrs`.`med` AS `MED`,`path_attrs`.`next_hop` AS `NH`,`links`.`mt_id` AS `mt_id`,`ls_nodes`.`hash_id` AS `hash_id`,`ls_nodes`.`path_attr_hash_id` AS `path_attr_hash_id`,`ls_nodes`.`peer_hash_id` AS `peer_hash_id`,`r`.`hash_id` AS `router_hash_id` from ((((`ls_nodes` left join `path_attrs` on(((`ls_nodes`.`path_attr_hash_id` = `path_attrs`.`hash_id`) and (`ls_nodes`.`peer_hash_id` = `path_attrs`.`peer_hash_id`)))) join `ls_links` `links` on(((`ls_nodes`.`hash_id` = `links`.`local_node_hash_id`) and (`links`.`isWithdrawn` = 0)))) join `bgp_peers` `p` on((`p`.`hash_id` = `ls_nodes`.`peer_hash_id`))) join `routers` `r` on((`p`.`router_hash_id` = `r`.`hash_id`))) where ((not((`ls_nodes`.`igp_router_id` regexp '..[1-9A-F]00$'))) and (not((`ls_nodes`.`igp_router_id` like '%]'))) and (`ls_nodes`.`isWithdrawn` = 0)) group by `ls_nodes`.`hash_id`,`links`.`mt_id` */;
+/*!50001 VIEW `v_ls_nodes` AS select `r`.`name` AS `RouterName`,`r`.`ip_address` AS `RouterIP`,`p`.`name` AS `PeerName`,`p`.`peer_addr` AS `PeerIP`,`ls_nodes`.`igp_router_id` AS `IGP_RouterId`,`ls_nodes`.`name` AS `NodeName`,if((`ls_nodes`.`protocol` like 'OSPF%'),`ls_nodes`.`igp_router_id`,`ls_nodes`.`router_id`) AS `RouterId`,`ls_nodes`.`id` AS `id`,`ls_nodes`.`bgp_ls_id` AS `bgpls_id`,`ls_nodes`.`ospf_area_id` AS `OspfAreaId`,`ls_nodes`.`isis_area_id` AS `ISISAreaId`,`ls_nodes`.`protocol` AS `protocol`,`ls_nodes`.`flags` AS `flags`,`ls_nodes`.`timestamp` AS `timestamp`,`ls_nodes`.`asn` AS `asn`,`path_attrs`.`as_path` AS `AS_Path`,`path_attrs`.`local_pref` AS `LocalPref`,`path_attrs`.`med` AS `MED`,`path_attrs`.`next_hop` AS `NH`,`links`.`mt_id` AS `mt_id`,`ls_nodes`.`sr_capabilities` AS `sr_capabilities`,`ls_nodes`.`hash_id` AS `hash_id`,`ls_nodes`.`path_attr_hash_id` AS `path_attr_hash_id`,`ls_nodes`.`peer_hash_id` AS `peer_hash_id`,`r`.`hash_id` AS `router_hash_id` from ((((`ls_nodes` left join `path_attrs` on(((`ls_nodes`.`path_attr_hash_id` = `path_attrs`.`hash_id`) and (`ls_nodes`.`peer_hash_id` = `path_attrs`.`peer_hash_id`)))) join `ls_links` `links` on(((`ls_nodes`.`hash_id` = `links`.`local_node_hash_id`) and (`links`.`isWithdrawn` = 0)))) join `bgp_peers` `p` on((`p`.`hash_id` = `ls_nodes`.`peer_hash_id`))) join `routers` `r` on((`p`.`router_hash_id` = `r`.`hash_id`))) where ((not((`ls_nodes`.`igp_router_id` regexp '..[1-9A-F]00$'))) and (not((`ls_nodes`.`igp_router_id` like '%]'))) and (`ls_nodes`.`isWithdrawn` = 0)) group by `ls_nodes`.`hash_id`,`links`.`mt_id` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -1491,12 +1496,12 @@ SUBPARTITIONS 32
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
 /*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8mb4 */;
-/*!50001 SET character_set_results     = utf8mb4 */;
-/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 SET character_set_client      = utf8 */;
+/*!50001 SET character_set_results     = utf8 */;
+/*!50001 SET collation_connection      = utf8_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`openbmp`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_ls_prefixes` AS select `localn`.`name` AS `Local_Router_Name`,`localn`.`igp_router_id` AS `Local_IGP_RouterId`,`localn`.`router_id` AS `Local_RouterId`,`lp`.`id` AS `id`,`lp`.`mt_id` AS `mt_id`,`lp`.`prefix` AS `Prefix`,`lp`.`prefix_len` AS `prefix_len`,`lp`.`ospf_route_type` AS `ospf_route_type`,`lp`.`metric` AS `metric`,`lp`.`protocol` AS `protocol`,`lp`.`timestamp` AS `timestamp`,`lp`.`prefix_bcast_bin` AS `prefix_bcast_bin`,`lp`.`prefix_bin` AS `prefix_bin`,`lp`.`peer_hash_id` AS `peer_hash_id` from (`ls_prefixes` `lp` join `ls_nodes` `localn` on((`lp`.`local_node_hash_id` = `localn`.`hash_id`))) where (`lp`.`isWithdrawn` = 0) */;
+/*!50001 VIEW `v_ls_prefixes` AS select `localn`.`name` AS `Local_Router_Name`,`localn`.`igp_router_id` AS `Local_IGP_RouterId`,`localn`.`router_id` AS `Local_RouterId`,`lp`.`id` AS `id`,`lp`.`mt_id` AS `mt_id`,`lp`.`prefix` AS `Prefix`,`lp`.`prefix_len` AS `prefix_len`,`lp`.`ospf_route_type` AS `ospf_route_type`,`lp`.`metric` AS `metric`,`lp`.`protocol` AS `protocol`,`lp`.`sr_prefix_sids` AS `sr_prefix_sids`,`localn`.`sr_capabilities` AS `sr_capabilities`,`lp`.`timestamp` AS `timestamp`,`lp`.`prefix_bcast_bin` AS `prefix_bcast_bin`,`lp`.`prefix_bin` AS `prefix_bin`,`lp`.`peer_hash_id` AS `peer_hash_id` from (`ls_prefixes` `lp` join `ls_nodes` `localn` on((`lp`.`local_node_hash_id` = `localn`.`hash_id`))) where (`lp`.`isWithdrawn` = 0) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -1643,4 +1648,4 @@ SUBPARTITIONS 32
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2016-11-15 17:44:18
+-- Dump completed on 2016-11-16 18:21:02
