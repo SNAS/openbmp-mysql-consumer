@@ -38,6 +38,9 @@ You will need Java 1.7 or greater as well as maven 3.x or greater.
 
 #### For example on Ubuntu 14.04:
     apt-get install git openjdk-7-jdk git openjdk-7-jre-headless maven
+    
+#### For Centos7
+    yum install maven
 
 #### Build
 You can build from source using maven as below:
@@ -45,7 +48,7 @@ You can build from source using maven as below:
 **Install openbmp-java-api-message dependency**
     
     git clone https://github.com/OpenBMP/openbmp-java-api-message.git
-    cd openbmp-api-message
+    cd openbmp-java-api-message
     mvn clean install
 
 **Build openbmp-mysql-consumer**
@@ -62,8 +65,8 @@ Running
 Make sure to define the memory as below, otherwise Java likes to use more than is needed.
     
     nohup java -Xmx512M -Xms512M -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+DisableExplicitGC \
-        -jar openbmp-mysql-consumer-0.1.0-SNAPSHOT.jar  -dh db.openbmp.org \
-        -dn openBMP -du openbmp -dp openbmpNow -zk localhost > mysql-consumer.log &     
+        -jar openbmp-mysql-consumer-0.2.0-SNAPSHOT.jar  -dh localhost \
+        -dn openBMP -du openbmp -dp openbmpNow -b localhost:9092 > mysql-consumer.log &     
 
 ### Debug/Logging Changes
 You can define your own **log4j2.yml** (yml or any format you prefer) by suppling the ```-Dlog4j.configurationFile=<filename>``` option to java when running the JAR.   
