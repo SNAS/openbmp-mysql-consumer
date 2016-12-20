@@ -79,12 +79,12 @@ public class MySQLConsumerApp
         topics.add("openbmp.parsed.collector");
         topics.add("openbmp.parsed.router");
         topics.add("openbmp.parsed.peer");
-        topics.add("openbmp.parsed.base_attribute");
         topics.add("openbmp.parsed.bmp_stat");
-        topics.add("openbmp.parsed.unicast_prefix");
         topics.add("openbmp.parsed.ls_node");
         topics.add("openbmp.parsed.ls_link");
         topics.add("openbmp.parsed.ls_prefix");
+        topics.add("openbmp.parsed.base_attribute");
+        topics.add("openbmp.parsed.unicast_prefix");
 
         int numConsumerThreads = 1;
         executor = Executors.newFixedThreadPool(numConsumerThreads);

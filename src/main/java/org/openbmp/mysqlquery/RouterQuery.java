@@ -109,6 +109,7 @@ public class RouterQuery extends Query{
                 // Upon initial router message, we set the state of all peers to down since we will get peer UP's
                 sb.append("UPDATE bgp_peers SET state = 0 WHERE router_hash_id = '");
                 sb.append(lookupValue(MsgBusFields.HASH, i) + "'");
+                sb.append(" AND timestamp < '" + rowMap.get(i).get(MsgBusFields.TIMESTAMP.getName()) + "'");
 
                 // Collector changed/heartbeat messages maintain the routerMap, but timing might prevent an update
                 //    so add the router if it doesn't exist already

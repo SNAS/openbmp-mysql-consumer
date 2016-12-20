@@ -100,17 +100,23 @@ public class PeerQuery extends Query{
 
             sb.append("UPDATE rib SET isWithdrawn = True WHERE peer_hash_id = '");
             sb.append(lookupValue(MsgBusFields.HASH, i));
-            sb.append("' AND isWithdrawn = False");
+            sb.append("' AND isWithdrawn = False AND timestamp < '");
+            sb.append(rowMap.get(i).get(MsgBusFields.TIMESTAMP.getName()) + "'");
 
             sb.append("; UPDATE ls_nodes SET isWithdrawn = True WHERE peer_hash_id = '");
             sb.append(lookupValue(MsgBusFields.HASH, i));
-            sb.append("' AND isWithdrawn = False");
+            sb.append("' AND isWithdrawn = False AND timestamp < '");
+            sb.append(rowMap.get(i).get(MsgBusFields.TIMESTAMP.getName()) + "'");
+
             sb.append("; UPDATE ls_links SET isWithdrawn = True WHERE peer_hash_id = '");
             sb.append(lookupValue(MsgBusFields.HASH, i));
-            sb.append("' AND isWithdrawn = False");
+            sb.append("' AND isWithdrawn = False AND timestamp < '");
+            sb.append(rowMap.get(i).get(MsgBusFields.TIMESTAMP.getName()) + "'");
+
             sb.append("; UPDATE ls_prefixes SET isWithdrawn = True WHERE peer_hash_id = '");
             sb.append(lookupValue(MsgBusFields.HASH, i));
-            sb.append("' AND isWithdrawn = False");
+            sb.append("' AND isWithdrawn = False AND timestamp < '");
+            sb.append(rowMap.get(i).get(MsgBusFields.TIMESTAMP.getName()) + "'");
 
         }
 

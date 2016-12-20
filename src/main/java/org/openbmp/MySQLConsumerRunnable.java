@@ -37,6 +37,7 @@ import java.util.concurrent.*;
  *   A thread to process a topic partition.  Supports all openbmp.parsed.* topics.
  */
 public class MySQLConsumerRunnable implements Runnable {
+    private final Integer SUBSCRIBE_INTERVAL_MILLI = 10000;  // topic subscription interval
     private final Integer FIFO_QUEUE_SIZE = 20000;          // Size of the FIFO queue
 
     private Boolean running;
@@ -51,6 +52,9 @@ public class MySQLConsumerRunnable implements Runnable {
     private List<String> topics;
     private Config cfg;
     private Map<String,Map<String, Integer>> routerConMap;
+
+    private int topics_subscribed_count;
+    private boolean topics_all_subscribed;
 
     private BigInteger messageCount;
     private long collector_msg_count;
@@ -95,6 +99,14 @@ public class MySQLConsumerRunnable implements Runnable {
         this.routerConMap = routerConMap;
 
         this.running = false;
+
+        /*
+         * It's imperative to first process messages from some topics before subscribing to others.
+         *    When connecting to Kafka, topics will be subscribed at an interval.  When the
+         *    topics_subscribe_count is equal to the topics size, then all topics have been subscribed to.
+         */
+        this.topics_subscribed_count = 0;
+        this.topics_all_subscribed = false;
 
         /*
          * Start MySQL Writer thread - only one thread is needed
@@ -155,11 +167,11 @@ public class MySQLConsumerRunnable implements Runnable {
             org.apache.kafka.clients.consumer.ConsumerRebalanceListener rebalanceListener =
                     new ConsumerRebalanceListener(consumer);
 
-            consumer.subscribe(topics,  rebalanceListener);
-
-            for (String topic: topics) {
-                logger.info("Subscribed to topic: %s", topic);
-            }
+//                consumer.subscribe(topics, rebalanceListener);
+//
+//                for (String topic : topics) {
+//                    logger.info("Subscribed to topic: %s", topic);
+//                }
 
             status = true;
 
@@ -209,6 +221,7 @@ public class MySQLConsumerRunnable implements Runnable {
          */
         Map<String, String> query;
         long prev_time = System.currentTimeMillis();
+        long subscribe_prev_timestamp = 0L;
 
         while (true) {
 
@@ -222,6 +235,11 @@ public class MySQLConsumerRunnable implements Runnable {
 
                 running = connect();
                 continue;
+            }
+
+            // Subscribe to topics if needed
+            if (! topics_all_subscribed) {
+                subscribe_prev_timestamp = subscribe_topics(subscribe_prev_timestamp);
             }
 
             try {
@@ -395,18 +413,23 @@ public class MySQLConsumerRunnable implements Runnable {
                      * Add query to writer queue
                      */
                     if (obj != null) {
-                        String values = dbQuery.genValuesStatement();
+                        try {
+                            String values = dbQuery.genValuesStatement();
 
-                        if (values.length() > 0) {
-                            // Add statement and value to query map
-                            String[] ins = dbQuery.genInsertStatement();
-                            query.put("prefix", ins[0]);
-                            query.put("suffix", ins[1]);
-                            query.put("value", values);
+                            if (values.length() > 0) {
+                                // Add statement and value to query map
+                                String[] ins = dbQuery.genInsertStatement();
+                                query.put("prefix", ins[0]);
+                                query.put("suffix", ins[1]);
+                                query.put("value", values);
 
-                            // block if space is not available
-                            sendToWriter(query);
+                                // block if space is not available
+                                sendToWriter(query);
+                            }
+                        } catch (Exception ex) {
+                            logger.info("Get values Exception: " + message.getContent(), ex);
                         }
+
                     }
                 }
 
@@ -442,6 +465,41 @@ public class MySQLConsumerRunnable implements Runnable {
                 break;
             }
         }
+    }
+
+    /**
+     * Method will subscribe to pending topics
+     *
+     * @param prev_timestamp        Previous timestamp that topics were subscribed.
+     *
+     * @return Time in milliseconds that the topic was last subscribed
+     */
+    private long subscribe_topics(long prev_timestamp) {
+        long sub_timestamp = prev_timestamp;
+
+        if (topics_subscribed_count < topics.size()) {
+
+            if ((System.currentTimeMillis() - prev_timestamp) >= SUBSCRIBE_INTERVAL_MILLI) {
+                List<String> subTopics = new ArrayList<>();
+
+                for (int i=0; i <= topics_subscribed_count; i++) {
+                    subTopics.add(topics.get(i));
+                }
+
+                consumer.commitSync();
+                consumer.subscribe(subTopics);
+
+                logger.info("Subscribed to topic: %s", topics.get(topics_subscribed_count));
+
+                topics_subscribed_count++;
+
+                sub_timestamp = System.currentTimeMillis();
+            }
+        } else {
+            topics_all_subscribed = true;
+        }
+
+        return sub_timestamp;
     }
 
     public synchronized boolean isRunning() { return running; }
