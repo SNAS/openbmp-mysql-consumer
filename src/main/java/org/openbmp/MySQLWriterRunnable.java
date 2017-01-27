@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  *      the FIFO queue.
  */
 public class MySQLWriterRunnable implements  Runnable {
-    private final Integer MAX_BULK_STATEMENTS = 2500;           // Maximum number of bulk values/multi-statements to allow
+    private final Integer MAX_BULK_STATEMENTS = 1000;           // Maximum number of bulk values/multi-statements to allow
     private final Integer MAX_BULK_WAIT_MS = 75;                // Maximum milliseconds to wait for bulk messages
     private final Integer MAX_MYSQL_RETRIES = 10;               // Maximum MySQL retires
 
@@ -61,7 +61,9 @@ public class MySQLWriterRunnable implements  Runnable {
         try {
             con = DriverManager.getConnection(
                     "jdbc:mariadb://" + cfg.getDbHost() + "/" + cfg.getDbName() +
-                            "?tcpKeepAlive=true&connectTimeout=30000&socketTimeout=15000&useCompression=true&autoReconnect=true&allowMultiQueries=true",
+                            "?tcpKeepAlive=true&connectTimeout=30000&socketTimeout=60000&useCompression=true" +
+                            "&autoReconnect=true&allowMultiQueries=true&useBatchMultiSend=false" +
+                            "&enableQueryTimeouts=false",
                     cfg.getDbUser(), cfg.getDbPw());
 
             logger.debug("Writer thread connected to mysql");
@@ -113,7 +115,6 @@ public class MySQLWriterRunnable implements  Runnable {
                 if (!e.getSQLState().equals("40001")) {
                     logger.info("SQL exception state " + i + " : " + e.getSQLState());
                     logger.info("SQL exception: " + e.getMessage());
-                    logger.debug("query: " + query);
                 }
                 //e.printStackTrace();
 
@@ -127,7 +128,7 @@ public class MySQLWriterRunnable implements  Runnable {
 
         if (!success) {
             logger.warn("Failed to insert/update after max retires of %d", MAX_MYSQL_RETRIES);
-            logger.warn("query: " + query);
+            logger.debug("query: " + query);
         }
     }
 
@@ -229,6 +230,8 @@ public class MySQLWriterRunnable implements  Runnable {
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
+        } catch (Exception e) {
+            logger.error("Exception: ", e);
         }
 
         logger.debug("Writer thread finished");

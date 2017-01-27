@@ -48,6 +48,7 @@ public class MySQLConsumerRunnable implements Runnable {
 
 
     private KafkaConsumer<String, String> consumer;
+    private ConsumerRebalanceListener rebalanceListener;
     private Properties props;
     private List<String> topics;
     private Config cfg;
@@ -107,6 +108,8 @@ public class MySQLConsumerRunnable implements Runnable {
          */
         this.topics_subscribed_count = 0;
         this.topics_all_subscribed = false;
+
+        this.rebalanceListener = new ConsumerRebalanceListener(consumer);
 
         /*
          * Start MySQL Writer thread - only one thread is needed
@@ -354,19 +357,19 @@ public class MySQLConsumerRunnable implements Runnable {
                             sendToWriter(analysis_query);
                         }
 
-                        // add community_analysis
-                        values = baseAttrQuery.genCommunityAnalysisValuesStatement();
-                        if (values.length() > 0) {
-                            Map<String, String> analysis_query = new HashMap<>();
-                            String[] ins = baseAttrQuery.genCommunityAnalysisStatement();
-                            analysis_query.put("prefix", ins[0]);
-                            analysis_query.put("suffix", ins[1]);
-
-                            analysis_query.put("value", values);
-
-                            logger.trace("Added community_analysis message to queue: size = %d", writerQueue.size());
-                            sendToWriter(analysis_query);
-                        }
+//                        // add community_analysis
+//                        values = baseAttrQuery.genCommunityAnalysisValuesStatement();
+//                        if (values.length() > 0) {
+//                            Map<String, String> analysis_query = new HashMap<>();
+//                            String[] ins = baseAttrQuery.genCommunityAnalysisStatement();
+//                            analysis_query.put("prefix", ins[0]);
+//                            analysis_query.put("suffix", ins[1]);
+//
+//                            analysis_query.put("value", values);
+//
+//                            logger.trace("Added community_analysis message to queue: size = %d", writerQueue.size());
+//                            sendToWriter(analysis_query);
+//                        }
 
                     } else if (record.topic().equals("openbmp.parsed.unicast_prefix")) {
                         logger.trace("Parsing unicast_prefix message");
@@ -487,7 +490,7 @@ public class MySQLConsumerRunnable implements Runnable {
                 }
 
                 consumer.commitSync();
-                consumer.subscribe(subTopics);
+                consumer.subscribe(subTopics, rebalanceListener);
 
                 logger.info("Subscribed to topic: %s", topics.get(topics_subscribed_count));
 
