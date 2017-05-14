@@ -144,7 +144,7 @@ class dbAcccess:
                 if (len(result) > 0):
                     rows += result
                 else:
-                    break;
+                    break
 
             return rows
 
@@ -173,7 +173,7 @@ class dbAcccess:
             else:
                 self.cursor.execute(query)
 
-            #self.conn.commit()
+            self.conn.commit()
 
             self.last_query_time = time() - startTime
 
@@ -183,4 +183,3 @@ class dbAcccess:
             print("ERROR: query failed - " + str(err))
             #print("   QUERY: %s", query)
             return None
-

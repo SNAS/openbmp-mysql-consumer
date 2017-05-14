@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS %s (
     PRIMARY KEY (prefix, prefix_len, recv_origin_as)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 """ % TBL_RPKI_GEN_PREFIX_NAME
 
+TBL_RPKI_HISTORY_NAME = 'rpki_history_stats'
+TBL_RPKI_HISTORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS %s (
+    total_prefix int(10) unsigned NOT NULL,
+    total_violations int(10) unsigned NOT NULL,
+    timestamp timestamp(6) NOT NULL DEFAULT current_timestamp(6),
+    PRIMARY KEY (timestamp),
+    KEY idx_timestamp (timestamp) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+""" % TBL_RPKI_HISTORY_NAME
+
 QUERY_UPDATE_GEN_PREFIX_TABLE = """
 INSERT INTO %s (prefix,prefix_len,recv_origin_as,rpki_origin_as,irr_origin_as,irr_source)
   SELECT SQL_BIG_RESULT rib.prefix_bin,rib.prefix_len,rib.origin_as as recv_origin_as,
@@ -208,6 +219,14 @@ def main():
 
     # disable strict mode for session
     db.queryNoResults("SET SESSION sql_mode = ''")
+
+    # Record old stats before pulling new data
+    total_count = db.query("SELECT count(*) count FROM %s" % TBL_RPKI_VALIDATOR_NAME)[0][0]
+    total_violations = db.query("SELECT count(*) FROM %s WHERE rpki_origin_as IS NOT NULL AND recv_origin_as != rpki_origin_as"
+                                % TBL_RPKI_GEN_PREFIX_NAME)[0][0]
+    db.queryNoResults("INSERT IGNORE INTO %s (total_prefix, total_violations) VALUES (%d, %d)"
+                      % (TBL_RPKI_HISTORY_NAME, total_count, total_violations))
+    print "Recorded current stats"
 
     server = cfg['server']
     load_export(db, server);
