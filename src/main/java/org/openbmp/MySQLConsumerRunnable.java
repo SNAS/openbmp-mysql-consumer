@@ -16,16 +16,7 @@ import org.apache.kafka.common.config.ConfigException;
 import org.openbmp.api.parsed.message.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.openbmp.mysqlquery.BaseAttributeQuery;
-import org.openbmp.mysqlquery.BmpStatQuery;
-import org.openbmp.mysqlquery.CollectorQuery;
-import org.openbmp.mysqlquery.LsLinkQuery;
-import org.openbmp.mysqlquery.LsNodeQuery;
-import org.openbmp.mysqlquery.LsPrefixQuery;
-import org.openbmp.mysqlquery.PeerQuery;
-import org.openbmp.mysqlquery.Query;
-import org.openbmp.mysqlquery.RouterQuery;
-import org.openbmp.mysqlquery.UnicastPrefixQuery;
+import org.openbmp.mysqlquery.*;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -63,6 +54,7 @@ public class MySQLConsumerRunnable implements Runnable {
     private long peer_msg_count;
     private long base_attribute_msg_count;
     private long unicast_prefix_msg_count;
+    private long l3vpn_prefix_msg_count;
     private long ls_node_msg_count;
     private long ls_link_msg_count;
     private long ls_prefix_msg_count;
@@ -378,6 +370,13 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = new UnicastPrefix(message.getVersion(), message.getContent());
                         dbQuery = new UnicastPrefixQuery(obj.getRowMap());
 
+                    } else if (record.topic().equals("openbmp.parsed.l3vpn")) {
+                        logger.trace("Parsing L3VPN prefix message");
+                        l3vpn_prefix_msg_count++;
+
+                        obj = new L3VpnPrefix(message.getVersion(), message.getContent());
+                        dbQuery = new L3VpnPrefixQuery(obj.getRowMap());
+
                     } else if (record.topic().equals("openbmp.parsed.bmp_stat")) {
                         logger.trace("Parsing bmp_stat message");
                         stat_msg_count++;
@@ -524,6 +523,10 @@ public class MySQLConsumerRunnable implements Runnable {
 
     public long getBase_attribute_msg_count() {
         return base_attribute_msg_count;
+    }
+
+    public long getL3vpn_prefix_msg_count() {
+        return l3vpn_prefix_msg_count;
     }
 
     public long getUnicast_prefix_msg_count() {

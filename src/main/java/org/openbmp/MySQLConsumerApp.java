@@ -85,6 +85,7 @@ public class MySQLConsumerApp
         topics.add("openbmp.parsed.ls_prefix");
         topics.add("openbmp.parsed.base_attribute");
         topics.add("openbmp.parsed.unicast_prefix");
+        topics.add("openbmp.parsed.l3vpn");
 
         int numConsumerThreads = 1;
         executor = Executors.newFixedThreadPool(numConsumerThreads);
@@ -167,6 +168,8 @@ public class MySQLConsumerApp
                                 mysqlApp.consumerThreads.get(i).getBase_attribute_msg_count());
                         logger.info("      unicast prefix messages: %d",
                                 mysqlApp.consumerThreads.get(i).getUnicast_prefix_msg_count());
+                        logger.info("      l3vpn prefix messages: %d",
+                                mysqlApp.consumerThreads.get(i).getL3vpn_prefix_msg_count());
                         logger.info("             LS node messages: %d",
                                 mysqlApp.consumerThreads.get(i).getLs_node_msg_count());
                         logger.info("             LS link messages: %d",
