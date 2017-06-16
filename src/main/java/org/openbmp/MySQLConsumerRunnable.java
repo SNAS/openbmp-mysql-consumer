@@ -312,7 +312,7 @@ public class MySQLConsumerRunnable implements Runnable {
                         logger.trace("Parsing peer message");
                         peer_msg_count++;
 
-                        Peer peer = new Peer(message.getContent());
+                        Peer peer = new Peer(message.getVersion(), message.getContent());
                         PeerQuery peerQuery = new PeerQuery(peer.getRowMap());
                         obj = peer;
                         dbQuery = peerQuery;

@@ -24,7 +24,8 @@ public class PeerQuery extends Query{
         String [] stmt = { " REPLACE INTO bgp_peers (hash_id,router_hash_id,peer_rd,isIPv4,peer_addr,name,peer_bgp_id," +
                            "peer_as,state,isL3VPNpeer,timestamp,isPrePolicy,local_ip,local_bgp_id,local_port," +
                            "local_hold_time,local_asn,remote_port,remote_hold_time,sent_capabilities," +
-                           "recv_capabilities,bmp_reason,bgp_err_code,bgp_err_subcode,error_text) VALUES ",
+                           "recv_capabilities,bmp_reason,bgp_err_code,bgp_err_subcode,error_text," +
+                           "isLocRib,isLocRibFiltered,table_name) VALUES ",
 
                            "" };
         return stmt;
@@ -69,8 +70,10 @@ public class PeerQuery extends Query{
             sb.append(lookupValue(MsgBusFields.BMP_REASON, i) + ",");
             sb.append(lookupValue(MsgBusFields.BGP_ERROR_CODE, i) + ",");
             sb.append(lookupValue(MsgBusFields.BGP_ERROR_SUB_CODE, i) + ",");
-            sb.append("'" + lookupValue(MsgBusFields.ERROR_TEXT, i) + "'");
-
+            sb.append("'" + lookupValue(MsgBusFields.ERROR_TEXT, i) + "',");
+            sb.append(lookupValue(MsgBusFields.IS_LOCRIB, i) + ",");
+            sb.append(lookupValue(MsgBusFields.IS_LOCRIB_FILTERED, i) + ",");
+            sb.append("'" + lookupValue(MsgBusFields.TABLE_NAME, i) + "'");
             sb.append(')');
         }
 

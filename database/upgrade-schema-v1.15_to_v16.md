@@ -1,4 +1,4 @@
-DB Alter Changes for v1.17
+DB Alter Changes for v1.16
 --------------------------------
 
 It is **recommended** that you replace/REINIT your DB with the latest
