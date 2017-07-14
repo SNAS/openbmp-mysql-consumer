@@ -23,7 +23,6 @@ from shutil import rmtree
 RR_DB_FTP = OrderedDict()
 RR_DB_FTP['nttcom'] = {'site': 'rr1.ntt.net', 'path': '/nttcomRR/', 'filename':'nttcom.db.gz'}
 RR_DB_FTP['level3'] = {'site': 'rr.Level3.net', 'path': '/pub/rr/', 'filename':'level3.db.gz'}
-RR_DB_FTP['savvis'] = {'site': 'ftp.radb.net', 'path': '/radb/dbase/', 'filename':'savvis.db.gz'}
 RR_DB_FTP['radb'] = {'site': 'ftp.radb.net', 'path': '/radb/dbase/', 'filename':'radb.db.gz'}
 RR_DB_FTP['arin'] = {'site': 'ftp.arin.net', 'path': '/pub/rr/', 'filename':'arin.db'}
 RR_DB_FTP['afrinic'] = {'site': 'ftp.afrinic.net', 'path': '/pub/dbase/', 'filename':'afrinic.db.gz'}
@@ -214,14 +213,17 @@ def downloadDataFile():
         os.makedirs(TMP_DIR)
 
     for source in RR_DB_FTP:
-        print "Downloading %s..." % source
-        ftp = FTP(RR_DB_FTP[source]['site'])
-        ftp.login()
-        ftp.cwd(RR_DB_FTP[source]['path'])
-        ftp.retrbinary("RETR %s" % RR_DB_FTP[source]['filename'],
-                       open("%s/%s" % (TMP_DIR, RR_DB_FTP[source]['filename']), 'wb').write)
-        ftp.quit()
-        print "      Done downloading %s" % source
+        try:
+            print "Downloading %s..." % source
+            ftp = FTP(RR_DB_FTP[source]['site'])
+            ftp.login()
+            ftp.cwd(RR_DB_FTP[source]['path'])
+            ftp.retrbinary("RETR %s" % RR_DB_FTP[source]['filename'],
+                           open("%s/%s" % (TMP_DIR, RR_DB_FTP[source]['filename']), 'wb').write)
+            ftp.quit()
+            print "      Done downloading %s" % source
+        except:
+            print "Error processing %s, skipping" % source
 
 
 def script_exit(status=0):
