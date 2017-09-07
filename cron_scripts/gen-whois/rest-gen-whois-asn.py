@@ -34,7 +34,7 @@ ORG_MAP = {
     # ripe
     'as-name': 'as_name',  # apnic
     'descr': 'remarks',
-    'org': 'org',
+    'org': 'org_id',
     'organisation': 'org_id',
     'org-name': 'org_name',
     # apnic
@@ -83,7 +83,7 @@ TBL_GEN_WHOIS_ASN_SCHEMA = (
 
 WHOIS_SOURCES = OrderedDict()
 WHOIS_SOURCES['arin'] = "http://whois.arin.net/rest/asn/"
-WHOIS_SOURCES['ripe'] = "http://rest.db.ripe.net/ripe/aut-num/as"
+#WHOIS_SOURCES['ripe'] = "http://rest.db.ripe.net/ripe/aut-num/as"
 
 # ----------------------------------------------------------------
 # Queries to get data
@@ -164,15 +164,23 @@ def arin(asn):
         asn_json = res_json['asn']
         # if return value points to ripe, search ripe
         if 'ripe' in asn_json['name']['$'].lower():
-            record = ripe(asn)
+            #record = ripe(asn)
+            return 'RIPE'
         elif 'apnic' in asn_json['name']['$'].lower():
             return 'AS in APNIC'
         else:
             # add attributes in asn
             record['as_name'] = asn_json['name']['$']
             if 'comment' in asn_json:
-                remarks = ' '.join(l['$'] for l in asn_json['comment']['line'])
-                record['remarks'] = remarks
+                if isinstance(asn_json['comment']['line'], list):
+                    for l in asn_json['comment']:
+                        remarks = ' '.join(l['$'] for l in asn_json['comment']['line'])
+                elif '$' in asn_json['comment']['line']:
+                    remarks = asn_json['comment']['line']['$']
+                else:
+                    remarks = ''
+
+                record['remarks'] = remarks.replace("'", "\"")
 
             # fetch attributes related to org
             org_ref = res_json['asn']['orgRef']['$']
@@ -180,18 +188,21 @@ def arin(asn):
             org = org_json['org']
 
             for key, value in org.iteritems():
-                if key in ORG_MAP:
-                    # value could be {'$': xx}
-                    # and {'line': [{..}, {}]}, {'line': {..}}
-                    if '$' in value:
-                        record[ORG_MAP[key]] = value['$']
-                    elif key == 'iso3166-1':
-                        record['country'] = value['code2']['$']
-                    elif 'line' in value:
-                        if isinstance(value['line'], tuple):
-                            record[ORG_MAP[key]] = ' '.join(l['$'] for l in value['line'])
-                        else:
-                            record[ORG_MAP[key]] = value['line']['$']
+                try:
+                    if key in ORG_MAP:
+                        # value could be {'$': xx}
+                        # and {'line': [{..}, {}]}, {'line': {..}}
+                        if '$' in value:
+                            record[ORG_MAP[key]] = value['$']
+                        elif key == 'iso3166-1':
+                            record['country'] = value['code2']['$']
+                        elif 'line' in value:
+                            if isinstance(value['line'], list):
+                                record[ORG_MAP[key]] = ' '.join(l['$'] for l in value['line'])
+                            else:
+                                record[ORG_MAP[key]] = value['line']['$']
+                except:
+                    pass
 
     else:
         print 'ERROR: ' + str(response.status_code)
@@ -219,11 +230,17 @@ def ripe(asn):
                 record[ORG_MAP[attr['name']]] = attr['value']
 
         if 'org' not in record:  # find org URL
-            print 'ERROR: Organization info not found'
-            raise Exception
-        else:
-            org_id = record['org']
-            org_res_json = requests.get('http://rest.db.ripe.net/ripe/organisation/' + org_id, headers=headers).json()
+            if 'org_id' in record:
+                record['org'] = record['org_id']
+            else:
+                print 'ERROR: Organization info not found asn: %d %r' % (asn, record)
+                record['org'] = ""
+
+        org_id = record['org']
+        del record['org']
+        org_res_json = requests.get('http://rest.db.ripe.net/ripe/organisation/' + org_id, headers=headers).json()
+
+        if 'objects' in org_res_json:
             org_attribute = org_res_json['objects']['object'][0]['attributes']['attribute']
             addr_list = []
             for attr in org_attribute:
@@ -238,7 +255,7 @@ def ripe(asn):
                 record['city'] = addr_list[2]
                 record['country'] = addr_list[3]
             except IndexError, e:
-                print 'Error: Address returned by RIPE are not in good format. \n' + e.message
+                print 'Error: Address returned by RIPE are not in good format: ' + e.message
 
     return record
 
@@ -375,12 +392,18 @@ def walk_whois(db, asn_list):
                 addr = record['address'].split('\n')
                 if 'country' not in record:
                     record['country'] = addr[len(addr) - 1]
+
                 if 'state_prov' not in record:
                     record['state_prov'] = addr[len(addr) - 2]
+                    record['state_prov'] = record['state_prov'][:32] 
 
             # Check if as_name is missing, if so use org_name
             if 'as_name' not in record and 'org_id' in record:
                 record['as_name'] = record['org_id']
+
+            # Truncate records
+            if 'country' in record:
+                record['country'] = record['country'][:24]
 
             # Update database with required
             update_whois_db(db, asn, record)

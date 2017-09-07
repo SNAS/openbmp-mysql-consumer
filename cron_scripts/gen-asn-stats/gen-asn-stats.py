@@ -12,12 +12,20 @@ import mysql.connector as mysql
 import subprocess
 from multiprocessing.pool import ThreadPool,AsyncResult
 import os
+import sys
 from time import time,sleep
+from datetime import datetime
 
 #: Interval Timestamp
 #:    Multiple queries are used to update the same object for an interval run,
 #:    therefore all the updates should have the timestamp of when this script started
 INTERVAL_TIMESTAMP = time()
+
+#: Max number of origin ASN's to query in a single select statement
+MAX_BATCH_SELECT_ORIGIN = 10
+
+#: Max number of transit ASN's to query in a single select statement
+MAX_BATCH_SELECT_TRANSIT = 10
 
 #: Record dictionary
 ORIGIN_RECORD_DICT = {}
@@ -35,10 +43,10 @@ TRIGGER_CREATE_INSERT_STATUS_DEF = (
         "FOR EACH ROW\n"
         "    BEGIN\n"
         "        declare last_ts timestamp;\n"
-        "        declare v4_o_count bigint(20) unsigned;\n"
-        "        declare v6_o_count bigint(20) unsigned;\n"
-        "        declare v4_t_count bigint(20) unsigned;\n"
-        "        declare v6_t_count bigint(20) unsigned;\n"
+        "        declare v4_o_count bigint(20) unsigned default 0;\n"
+        "        declare v6_o_count bigint(20) unsigned default 0;\n"
+        "        declare v4_t_count bigint(20) unsigned default 0;\n"
+        "        declare v6_t_count bigint(20) unsigned default 0;\n"
 
         "        SELECT transit_v4_prefixes,transit_v6_prefixes,origin_v4_prefixes,\n"
         "                    origin_v6_prefixes,timestamp\n"
@@ -51,6 +59,32 @@ TRIGGER_CREATE_INSERT_STATUS_DEF = (
 
                     # everything is the same, cause the insert to fail (duplicate)
         "            set new.timestamp = last_ts;\n"
+        "        ELSE\n"
+        
+        "    IF (new.transit_v4_prefixes != v4_t_count) THEN"
+        "      SET new.transit_v4_change = if(new.transit_v4_prefixes > v4_t_count,"
+        "                                   new.transit_v4_prefixes / v4_t_count,"
+        "                                   v4_t_count / new.transit_v4_prefixes * -1);"
+        "    END IF;"
+
+        "    IF (new.transit_v6_prefixes != v6_t_count) THEN"
+        "      SET new.transit_v6_change = if(new.transit_v6_prefixes > v6_t_count," 
+        "                                   new.transit_v6_prefixes / v6_t_count," 
+        "                                   v6_t_count / new.transit_v6_prefixes * -1);"
+        "    END IF;"
+
+        "    IF (new.origin_v4_prefixes != v4_o_count) THEN"
+        "      SET new.origin_v4_change = if(new.origin_v4_prefixes > v4_o_count,"
+        "                                   new.origin_v4_prefixes / v4_o_count,"                                           
+        "                                   v4_o_count / new.origin_v4_prefixes * -1);"
+        "    END IF;"
+
+        "    IF (new.origin_v6_prefixes != v6_o_count) THEN"
+        "      SET new.origin_v6_change = if(new.origin_v6_prefixes > v6_o_count," 
+        "                                   new.origin_v6_prefixes / v6_o_count," 
+        "                                   v6_o_count / new.origin_v6_prefixes * -1);"
+        "    END IF;"
+
         "        END IF;\n"
         "    END;\n"
 #        "delimiter ;\n"
@@ -67,40 +101,88 @@ TBL_GEN_ASN_STATS_SCHEMA = (
         "  transit_v6_prefixes bigint unsigned not null default 0,"
         "  origin_v4_prefixes bigint unsigned not null default 0,"
         "  origin_v6_prefixes bigint unsigned not null default 0,"
+        "  transit_v4_change DECIMAL(8,5) not null default 0,"
+        "  transit_v6_change DECIMAL(8,5) not null default 0,"
+        "  origin_v4_change DECIMAL(8,5) not null default 0,"
+        "  origin_v6_change DECIMAL(8,5) not null default 0,"
         "  repeats bigint unsigned not null default 0,"
         "  timestamp timestamp not null default current_timestamp on update current_timestamp,"
         "  PRIMARY KEY (asn,timestamp) "
         "  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 "
         ) % (TBL_GEN_ASN_STATS_NAME)
 
+TBL_GEN_ASN_STATS_LAST_NAME = "gen_asn_stats_last"
+TBL_GEN_ASN_STATS_LAST_SCHEMA = (
+        "CREATE TABLE IF NOT EXISTS %s ("
+        "  asn int unsigned not null,"
+        "  isTransit tinyint not null default 0,"
+        "  isOrigin tinyint not null default 0,"
+        "  transit_v4_prefixes bigint unsigned not null default 0,"
+        "  transit_v6_prefixes bigint unsigned not null default 0,"
+        "  origin_v4_prefixes bigint unsigned not null default 0,"
+        "  origin_v6_prefixes bigint unsigned not null default 0,"
+        "  timestamp timestamp not null default current_timestamp on update current_timestamp,"
+        "  PRIMARY KEY (asn) "
+        "  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 "
+        ) % (TBL_GEN_ASN_STATS_LAST_NAME)
+
+
+#: gen_active_asns table schema
+TBL_GEN_ACTIVE_ASNS_NAME = "gen_active_asns"
+TBL_GEN_ACTIVE_ASNS_SCHEMA = (
+        "CREATE TABLE IF NOT EXISTS %s ("
+        "  asn int unsigned not null,"
+        "  old bit(1) NOT NULL DEFAULT b'0',"
+        "  PRIMARY KEY (asn) "
+        "  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 "
+        ) % (TBL_GEN_ACTIVE_ASNS_NAME)
+
 # ----------------------------------------------------------------
 # Queries to get data
 # ----------------------------------------------------------------
-#: returns a list of distinct transit ASN's
-QUERY_TRANSIT_ASNS = (
-        "select distinct asn from as_path_analysis where asn_left != 0 and asn_right != 0"
-    )
+#: returns a list of distinct origin/transit ASN's
+QUERY_DISTINCT_ASNS = (
+        "select asn from %s"
+    ) % (TBL_GEN_ACTIVE_ASNS_NAME)
+
+#: INSERT INTO distinct ASN table - This query is slow, so only run once in a while
+INSERT_DISTINCT_ASNS = (
+        "REPLACE INTO %s (asn,old) SELECT distinct asn,0 from as_path_analysis where isWithdrawn = False;"
+    ) % (TBL_GEN_ACTIVE_ASNS_NAME)
+
+#: INSERT current stats for each ASN
+INSERT_LAST_ASN_STATS = (
+        "REPLACE INTO %s (asn,isTransit,isOrigin,transit_v4_prefixes,transit_v6_prefixes,origin_v4_prefixes,origin_v6_prefixes)"
+        "     SELECT asn,isTransit,isOrigin,transit_v4_prefixes,transit_v6_prefixes,origin_v4_prefixes,origin_v6_prefixes"
+        "          FROM gen_asn_stats"
+        "          WHERE timestamp >= date_sub(current_timestamp, interval 8 minute)"
+        "          GROUP BY asn"
+    ) % (TBL_GEN_ASN_STATS_LAST_NAME)
 
 #: returns a list of distinct prefix counts for transit asn's
-#:      %(asn)s     = Transit ASN to count
+#:      %(asn_list)s     = Transit ASN list (comma separated)
 QUERY_AS_TRANSIT_PREFIXES = (
-        "SELECT SQL_BUFFER_RESULT a.asn,rib.isIPv4,count(distinct prefix_bin,prefix_len)"
-        "        FROM (SELECT * FROM as_path_analysis "
-        "             WHERE asn = %(asn)s and asn_left != 0 and asn_right != 0"
-        "             GROUP BY asn,path_attr_hash_id ORDER BY null"
-        "          ) a join rib on (a.peer_hash_id = rib.peer_hash_id and a.path_attr_hash_id = rib.path_attr_hash_id)"
-        "        WHERE rib.isWithdrawn = False"
-        "        GROUP BY a.asn,rib.isIPv4"
+        "SELECT asn,isIPv4,count(distinct prefix_bin,prefix_len)"
+        "   FROM as_path_analysis a"
+        "   WHERE asn in ( %(asn_list)s ) and asn_left != 0 and asn_right != 0"
+        "       AND (isWithdrawn = False OR timestamp >= date_sub(current_timestamp, interval 30 minute))"
+        "   GROUP BY asn,isIPv4 order by null"
     )
 
 #: returns a list of distinct prefix counts for origin asn's
+# QUERY_AS_ORIGIN_PREFIXES = (
+#         "select origin_as,rib.isIPv4, count(distinct prefix_bin,prefix_len)"
+# 	    "       FROM rib"
+#         "       WHERE isWithdrawn = False"
+#         "       GROUP BY origin_as,isIPv4"
+#     )
 QUERY_AS_ORIGIN_PREFIXES = (
-        "select SQL_BUFFER_RESULT origin_as,rib.isIPv4, count(distinct prefix_bin,prefix_len)"
+        "select origin_as,rib.isIPv4, count(distinct prefix_bin,prefix_len)"
 	    "       FROM rib"
-        "       WHERE isWithdrawn = False"
-        "       GROUP BY origin_as,isIPv4"
+        "       WHERE origin_as in ( %(asn_list)s )"
+        "           AND (isWithdrawn = False OR timestamp >= date_sub(current_timestamp, interval 30 minute))"
+        "       GROUP BY origin_as,isIPv4 order by null"
     )
-
 
 
 # ----------------------------------------------------------------
@@ -272,76 +354,13 @@ class dbAcccess:
             return None
 
 
-def UpdateOriginPrefixesCounts(db):
+def UpdatePrefixesCounts(asns, query, batch_count, origin, db_pool):
     """ Update Origin prefix counts
 
-        :param db:      Pointer to DB access class (db should already be connected and ready)
-    """
-    colName_origin_v4 = "origin_v4_prefixes"
-    colName_origin_v6 = "origin_v6_prefixes"
-
-    # Run query and store data
-    rows = db.query(QUERY_AS_ORIGIN_PREFIXES)
-
-    print "Origin Query took %r seconds" % (db.last_query_time)
-
-    # Process the data and update the gen table
-    totalRows = len(rows)
-
-    for row in rows:
-        # Skip private ASN's
-        asn_int = int(row[0])
-        if (asn_int == 0 or asn_int == 23456 or
-            (asn_int >= 64496 and asn_int <= 65535) or
-            (asn_int >= 65536 and asn_int <= 131071) or
-             asn_int >= 4200000000):
-            continue
-
-        if (not row[0] in ORIGIN_RECORD_DICT):
-            ORIGIN_RECORD_DICT[row[0]] = { colName_origin_v4: 0,
-                                           colName_origin_v6: 0
-                                        }
-        if (row[1] == 1):   # IPv4
-                ORIGIN_RECORD_DICT[row[0]][colName_origin_v4] = int(row[2])
-        else: # IPv6
-                ORIGIN_RECORD_DICT[row[0]][colName_origin_v6] = int(row[2])
-
-
-def UpdateTransitPrefixesCountsThread(db, transit_asn):
-    """ Runs query on given DB pointer and returns tuple results
-
-    :param db:           Pointer to DB access class (db should already be connected and ready)
-    :param transit_asn:  Transit ASN to query
-
-    :return: tuple of (asn, transit_v4_prefixes, transit_v6_prefixes)
-    """
-    transit_v4_prefixes = 0
-    transit_v6_prefixes = 0
-
-    # Skip private ASN's
-    if (transit_asn == 0 or transit_asn == 23456 or
-        (transit_asn >= 64496 and transit_asn <= 65535) or
-        (transit_asn >= 65536 and transit_asn <= 131071) or
-         transit_asn >= 4200000000):
-        return (transit_asn, -1, -1)
-
-    # Run query and store data
-    rows = db.query(QUERY_AS_TRANSIT_PREFIXES % {'asn': transit_asn})
-
-    print "   Transit AS=%d Query took %r seconds" % (transit_asn, db.last_query_time)
-
-    for row in rows:
-        if (row[1] == 1):   # IPv4
-            transit_v4_prefixes = int(row[2])
-        else: # IPv6
-            transit_v6_prefixes = int(row[2])
-
-    return (transit_asn, transit_v4_prefixes, transit_v6_prefixes)
-
-
-def UpdateTransitPrefixesCounts(db_pool):
-    """ Update Transit prefix counts
-
+        :param asns:         List of ASNS (distinct ASN's)
+        :param query:        SQL query to run
+        :param batch_count:  Number of ASN's to batch in a query
+        :param origin:       Boolean; True indicates origin query, False indicates Transit query
         :param db_pool:      List of pointers to DB access class (db should already be connected and ready)
     """
     colName_transit_v4 = "transit_v4_prefixes"
@@ -349,60 +368,117 @@ def UpdateTransitPrefixesCounts(db_pool):
     colName_origin_v4 = "origin_v4_prefixes"
     colName_origin_v6 = "origin_v6_prefixes"
 
-    ASN_PATH_DICT = {}
-
-    # Run query and store data
-    rows = db_pool[0].query(QUERY_TRANSIT_ASNS)
-
-    print "Transit ASN list Query took %r seconds, total rows %d" % (db_pool[0].last_query_time, len(rows))
-
     pool = ThreadPool(processes=len(db_pool))
 
     thrs = [ ]
     i = 0
-    for row in rows:
-        transit_asn = row[0]
+    batch = 0
+    for row in asns:
+        if int(row[0]) == 23456:
+            continue
 
-        while (transit_asn > 0):
-            if (i >= len(thrs) or thrs[i].ready()):         # thread not yet started or previous is ready
-
-                if (i < len(thrs) and thrs[i].ready()):     # Thread ran is now ready
-                    (asn, v4, v6) = thrs[i].get()
-                    if (asn not in RECORD_DICT):
-                        RECORD_DICT[asn] = { colName_origin_v4: 0,
-                                             colName_origin_v6: 0,
-                                             colName_transit_v4: v4,
-                                             colName_transit_v6: v6 }
-                    else:
-                         RECORD_DICT[asn][colName_transit_v4] = int(v4)
-                         RECORD_DICT[asn][colName_transit_v6] = int(v6)
-
-                    thrs.pop(i)
-
-                #print "Running as=%d via worker=%d" % (transit_asn, i)
-                thrs.insert(i, pool.apply_async(UpdateTransitPrefixesCountsThread,
-                                 (db_pool[i], transit_asn,)))
-
-                transit_asn = -1
-
-            if (i < len(db_pool) - 1):
-                i += 1
+        if batch < batch_count:
+            if batch > 0:
+                asn_list += "," + str(row[0])
             else:
-                i = 0
+                asn_list = str(row[0])
 
-            sleep(0.01)
+            batch += 1
+
+        # Process batch
+        if batch >= batch_count or row[0] == asns[len(asns) - 1]:
+            while batch > 0:
+                if i >= len(thrs) or thrs[i].ready():         # thread not yet started or previous is ready
+                    if i < len(thrs) and thrs[i].ready():     # Thread ran is now ready
+
+                        for (asn, v4, v6) in thrs[i].get():
+                            if asn not in RECORD_DICT:
+                                if origin:
+                                    RECORD_DICT[asn] = {colName_origin_v4: v4,
+                                                        colName_origin_v6: v6,
+                                                        colName_transit_v4: 0,
+                                                        colName_transit_v6: 0}
+                                else:
+                                    RECORD_DICT[asn] = {colName_origin_v4: 0,
+                                                        colName_origin_v6: 0,
+                                                        colName_transit_v4: v4,
+                                                        colName_transit_v6: v6}
+
+                            else:
+                                if origin:
+                                    RECORD_DICT[asn][colName_origin_v4] = int(v4)
+                                    RECORD_DICT[asn][colName_origin_v6] = int(v6)
+                                else:
+                                    RECORD_DICT[asn][colName_transit_v4] = int(v4)
+                                    RECORD_DICT[asn][colName_transit_v6] = int(v6)
+
+                        thrs.pop(i)
+
+                    thrs.insert(i, pool.apply_async(UpdatePrefixesCountsThread,
+                                     (db_pool[i], query, asn_list,)))
+
+                    batch = 0
+
+                if i < len(db_pool) - 1:
+                    i += 1
+                else:
+                    i = 0
+
+                sleep(0.001)
 
     # Process remaining threads that are still running
     for thr in thrs:
-        (asn, v4, v6) = thr.get()
-        if (asn not in RECORD_DICT):
-            RECORD_DICT[asn] = { colName_origin_v4: 0,
-                                 colName_origin_v6: 0,
-                                 colName_transit_v4: v4,
-                                 colName_transit_v6: v6 }
-        else:
-             RECORD_DICT[asn][colName_transit_v4] = int(v4)
-             RECORD_DICT[asn][colName_transit_v6] = int(v6)
+        thr.wait()
+        for (asn, v4, v6) in thr.get():
+            if asn not in RECORD_DICT:
+                if origin:
+                    RECORD_DICT[asn] = {colName_origin_v4: v4,
+                                        colName_origin_v6: v6,
+                                        colName_transit_v4: 0,
+                                        colName_transit_v6: 0}
+                else:
+                    RECORD_DICT[asn] = {colName_origin_v4: 0,
+                                        colName_origin_v6: 0,
+                                        colName_transit_v4: v4,
+                                        colName_transit_v6: v6}
+
+            else:
+                if origin:
+                    RECORD_DICT[asn][colName_origin_v4] = int(v4)
+                    RECORD_DICT[asn][colName_origin_v6] = int(v6)
+                else:
+                    RECORD_DICT[asn][colName_transit_v4] = int(v4)
+                    RECORD_DICT[asn][colName_transit_v4] = int(v4)
+                    RECORD_DICT[asn][colName_transit_v6] = int(v6)
+
+
+def UpdatePrefixesCountsThread(db, query, asn_list):
+    """ Runs query on given DB pointer and returns tuple results
+
+    :param db:           Pointer to DB access class (db should already be connected and ready)
+    :param query:        ASN count query
+    :param asn_list:   ASN list to query
+
+    :return: tuple list of tuples (asn, v4_prefixes, v6_prefixes)
+    """
+    results = []
+    v4_prefixes = 0
+    v6_prefixes = 0
+
+    # Run query and store data
+    rows = db.query(query % {'asn_list': asn_list})
+
+    print "   ASNs=(%s) Query took %r seconds" % (asn_list, db.last_query_time)
+
+    for row in rows:
+        if row[1] == 1:   # IPv4
+            v4_prefixes = int(row[2])
+        else: # IPv6
+            v6_prefixes = int(row[2])
+
+        results.append((int(row[0]), v4_prefixes, v6_prefixes))
+
+    return results
 
 
 def UpdateDB(db):
@@ -449,6 +525,11 @@ def UpdateDB(db):
     print "Running bulk insert/update"
 
     db.queryNoResults(query)
+    print "Bulk insert took %r seconds" % (db.last_query_time)
+
+    print "---- Updating last ASN stats: %s " % datetime.now()
+    db.queryNoResults(INSERT_LAST_ASN_STATS)
+
 
 def main():
     """
@@ -465,43 +546,57 @@ def main():
     db = dbAcccess()
     db.connectDb(os.environ["OPENBMP_DB_USER"], os.environ["OPENBMP_DB_PASSWORD"], "localhost", os.environ["OPENBMP_DB_NAME"])
 
-    # Create the table
-    db.createTable(TBL_GEN_ASN_STATS_NAME, TBL_GEN_ASN_STATS_SCHEMA, False)
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        print "---- INIT: Creating tables and loading data: %s " % datetime.now()
+        # Create the table
+        db.createTable(TBL_GEN_ASN_STATS_NAME, TBL_GEN_ASN_STATS_SCHEMA, False)
 
-    # Create trigger
-    db.createTrigger(TRIGGER_CREATE_INSERT_STATUS_DEF, TRIGGER_INSERT_STATUS_NAME, False)
+        db.createTable(TBL_GEN_ASN_STATS_LAST_NAME, TBL_GEN_ASN_STATS_LAST_SCHEMA, False)
 
-    pool = ThreadPool(processes=1)
-    origin_thr = pool.apply_async(UpdateOriginPrefixesCounts, (db,))
+        # Create trigger
+        db.createTrigger(TRIGGER_CREATE_INSERT_STATUS_DEF, TRIGGER_INSERT_STATUS_NAME, False)
 
-    # Open additional connections to DB for parallel queries
-    db_pool = []
-    for i in range(0, 7):
-        dbp = dbAcccess()
-        dbp.connectDb(os.environ["OPENBMP_DB_USER"], os.environ["OPENBMP_DB_PASSWORD"], "localhost", os.environ["OPENBMP_DB_NAME"])
-        db_pool.append(dbp)
+        # Create distinct table
+        db.createTable(TBL_GEN_ACTIVE_ASNS_NAME, TBL_GEN_ACTIVE_ASNS_SCHEMA, True)
 
-    UpdateTransitPrefixesCounts(db_pool)
+        # Update active asn table to mark all objects as old
+        db.queryNoResults("UPDATE %s SET old = 1" % TBL_GEN_ACTIVE_ASNS_NAME)
 
-    for d in db_pool:
-        d.close()
+        # Update all ASN's
+        db.queryNoResults(INSERT_DISTINCT_ASNS)
 
-    # Wait for origin to finish
-    origin_thr.wait()
+        # Remove old records
+        db.queryNoResults("DELETE from %s WHERE old = 1" % TBL_GEN_ACTIVE_ASNS_NAME)
 
-    # Update the main dictionary with the origin details
-    for asn in ORIGIN_RECORD_DICT:
-        if (asn not in RECORD_DICT):
-            RECORD_DICT[asn] = ORIGIN_RECORD_DICT[asn]
-            RECORD_DICT[asn].update({'transit_v4_prefixes': 0, 'transit_v6_prefixes': 0})
-        else:
-            RECORD_DICT[asn].update(ORIGIN_RECORD_DICT[asn])
 
-    print "RECORD_DICT length = %d" % len(RECORD_DICT)
+    else:
+        distinct_asns = db.query(QUERY_DISTINCT_ASNS)
 
-    # RECORD_DICT now has all information, ready to update DB
-    UpdateDB(db)
+        print "Distinct ASN list Query took %r seconds, total rows %d" % (db.last_query_time, len(distinct_asns))
 
+        # Open additional connections to DB for parallel queries
+        db_pool = []
+        for i in range(0, 20):
+            dbp = dbAcccess()
+            dbp.connectDb(os.environ["OPENBMP_DB_USER"], os.environ["OPENBMP_DB_PASSWORD"], "localhost", os.environ["OPENBMP_DB_NAME"])
+            db_pool.append(dbp)
+
+        print "---- Getting Origins: %s " % datetime.now()
+        UpdatePrefixesCounts(distinct_asns, QUERY_AS_ORIGIN_PREFIXES, MAX_BATCH_SELECT_ORIGIN, True, db_pool)
+
+        print "---- Getting Transits: %s " % datetime.now()
+        UpdatePrefixesCounts(distinct_asns, QUERY_AS_TRANSIT_PREFIXES, MAX_BATCH_SELECT_TRANSIT, False, db_pool)
+
+        for d in db_pool:
+            d.close()
+
+        print "RECORD_DICT length = %d" % len(RECORD_DICT)
+
+        # RECORD_DICT now has all information, ready to update DB
+        print "---- Updating DB: %s " % datetime.now()
+        UpdateDB(db)
+
+    print "---- DONE: %s " % datetime.now()
     db.close()
 
 

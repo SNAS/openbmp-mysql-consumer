@@ -76,4 +76,142 @@ public class UnicastPrefixQuery extends Query{
         return sb.toString();
     }
 
+    /**
+     * Generate MySQL insert/update statement, sans the values for as_path_analysis
+     *
+     * @return Two strings are returned
+     *      0 = Insert statement string up to VALUES keyword
+     *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
+     */
+    public String[] genAsPathAnalysisStatement() {
+        String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right," +
+                "rib_hash_id,prefix_len,prefix_bin,isIPv4,iswithdrawn)" +
+                " VALUES ", "" };
+        return stmt;
+    }
+
+    /**
+     * Generate bulk values statement for SQL bulk insert for as_path_analysis
+     *
+     * @return String in the format of (col1, col2, ...)[,...]
+     */
+    public String genAsPathAnalysisValuesStatement() {
+        StringBuilder sb = new StringBuilder();
+
+        /*
+         * Iterate through the AS Path and extract out the left and right ASN for each AS within
+         *     the AS PATH
+         */
+        for (int i=0; i < rowMap.size(); i++) {
+
+            if ( ((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del")) {
+                if (sb.length() > 0)
+                    sb.append(',');
+
+                sb.append('(');
+                sb.append('0');
+                sb.append(',');
+                sb.append('0');
+                sb.append(',');
+                sb.append('0'); // Right ASN is zero
+                sb.append(",'");
+                sb.append(lookupValue(MsgBusFields.HASH, i));
+                sb.append("',");
+                sb.append("0,0,"); // prefix len and prefix_bin doesn't matter for delete
+                sb.append('1'); // isIPv4 - doesn't matter for delete
+                sb.append(",1)"); // Withdrawn
+
+            } else {
+
+                String as_path_str = ((String) lookupValue(MsgBusFields.AS_PATH, i)).trim();
+                as_path_str = as_path_str.replaceAll("[{}]", "");
+                String[] as_path = as_path_str.split(" ");
+
+                //System.out.println("AS Path = " + as_path_str);
+
+                Long left_asn = 0L;
+                Long right_asn = 0L;
+                Long asn = 0L;
+
+                for (int i2 = 0; i2 < as_path.length; i2++) {
+                    if (as_path[i2].length() <= 0)
+                        break;
+
+                    try {
+                        asn = Long.valueOf(as_path[i2]);
+                    } catch (NumberFormatException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+
+                    if (asn > 0) {
+                        if (i2 + 1 < as_path.length) {
+
+                            if (as_path[i2 + 1].length() <= 0)
+                                break;
+
+                            try {
+                                right_asn = Long.valueOf(as_path[i2 + 1]);
+
+                            } catch (NumberFormatException e) {
+                                e.printStackTrace();
+                                break;
+                            }
+
+                            if (right_asn.equals(asn)) {
+                                continue;
+                            }
+
+                            if (sb.length() > 0)
+                                sb.append(',');
+
+                            sb.append('(');
+                            sb.append(asn);
+                            sb.append(',');
+                            sb.append(left_asn);
+                            sb.append(',');
+                            sb.append(right_asn);
+                            sb.append(",'");
+                            sb.append(lookupValue(MsgBusFields.HASH, i));
+                            sb.append("',");
+                            sb.append(lookupValue(MsgBusFields.PREFIX_LEN, i));
+                            sb.append(',');
+                            sb.append("X'" + IpAddr.getIpHex((String) lookupValue(MsgBusFields.PREFIX, i)) + "',");
+                            sb.append(lookupValue(MsgBusFields.IS_IPV4, i));
+                            sb.append(",0)");
+
+                        } else {
+                            // No more left in path
+                            if (sb.length() > 0)
+                                sb.append(',');
+
+                            sb.append('(');
+                            sb.append(asn);
+                            sb.append(',');
+                            sb.append(left_asn);
+                            sb.append(',');
+                            sb.append('0'); // Right ASN is zero
+                            sb.append(",'");
+                            sb.append(lookupValue(MsgBusFields.HASH, i));
+                            sb.append("',");
+                            sb.append(lookupValue(MsgBusFields.PREFIX_LEN, i));
+                            sb.append(',');
+                            sb.append("X'" + IpAddr.getIpHex((String) lookupValue(MsgBusFields.PREFIX, i)) + "',");
+                            sb.append(lookupValue(MsgBusFields.IS_IPV4, i));
+                            sb.append(",0)");
+
+                            break;
+                        }
+
+                        left_asn = asn;
+                    }
+                }
+            }
+        }
+
+        //System.out.println("AS insert: " + sb.toString());
+        if (sb.length() <= 0)
+            sb.append("");
+        return sb.toString();
+    }
 }

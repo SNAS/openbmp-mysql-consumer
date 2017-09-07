@@ -110,6 +110,7 @@ public class MySQLConsumerApp
         props.put("max.partition.fetch.bytes", "2000000");
         props.put("heartbeat.interval.ms", "10000");
         props.put("max.poll.records", "2000");
+        props.put("fetch.max.wait.ms", "50");
 
         props.put("enable.auto.commit", "true");
 

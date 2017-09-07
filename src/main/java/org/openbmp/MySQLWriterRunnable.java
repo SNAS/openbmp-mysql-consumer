@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  *      the FIFO queue.
  */
 public class MySQLWriterRunnable implements  Runnable {
-    private final Integer MAX_BULK_STATEMENTS = 4000;           // Maximum number of bulk values/multi-statements to allow
+    private final Integer MAX_BULK_STATEMENTS = 200;            // Maximum number of bulk values/multi-statements to allow
     private final Integer MAX_BULK_WAIT_MS = 75;                // Maximum milliseconds to wait for bulk messages
     private final Integer MAX_MYSQL_RETRIES = 10;               // Maximum MySQL retires
 
@@ -61,7 +61,7 @@ public class MySQLWriterRunnable implements  Runnable {
         try {
             con = DriverManager.getConnection(
                     "jdbc:mariadb://" + cfg.getDbHost() + "/" + cfg.getDbName() +
-                            "?tcpKeepAlive=true&connectTimeout=30000&socketTimeout=60000&useCompression=true" +
+                            "?tcpKeepAlive=true&connectTimeout=30000&socketTimeout=350000&useCompression=true" +
                             "&autoReconnect=true&allowMultiQueries=true&useBatchMultiSend=false" +
                             "&enableQueryTimeouts=false",
                     cfg.getDbUser(), cfg.getDbPw());

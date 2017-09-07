@@ -14,7 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <openbmp-api.version>0.1.0-SNAPSHOT</openbmp-api.version>
         <kafka.version>0.10.0.1</kafka.version>
-        <mariadb.version>1.5.4</mariadb.version>
+        <mariadb.version>1.5.8</mariadb.version>
         <jackson-yaml.version>2.7.8</jackson-yaml.version>
         <log4j.version>2.7</log4j.version>
     </properties>

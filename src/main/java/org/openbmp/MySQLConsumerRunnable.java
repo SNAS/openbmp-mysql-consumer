@@ -12,6 +12,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
 import org.openbmp.api.parsed.message.*;
 import org.apache.logging.log4j.LogManager;
@@ -29,12 +30,11 @@ import java.util.concurrent.*;
  */
 public class MySQLConsumerRunnable implements Runnable {
     private final Integer SUBSCRIBE_INTERVAL_MILLI = 10000;  // topic subscription interval
-    private final Integer FIFO_QUEUE_SIZE = 20000;          // Size of the FIFO queue
+    private final Integer NUM_WRITER_THREADS = 3;            // The number of writers to run
 
     private Boolean running;
 
     private ExecutorService executor;
-    private MySQLWriterRunnable writerThread;
     private Long last_collector_msg_time;
 
 
@@ -60,16 +60,16 @@ public class MySQLConsumerRunnable implements Runnable {
     private long ls_prefix_msg_count;
     private long stat_msg_count;
 
-    /*
-     * FIFO queue for SQL messages to be written/inserted
-     *      Queue message:
-     *          Object is a hash map where the key is:
-     *              prefix:     Insert statement including the VALUES keyword
-     *              suffix:     ON DUPLICATE KEY UPDATE suffix, can be empty if not used
-     *              value:      Comma delimited set of VALUES
-     */
-    private BlockingQueue<Map<String, String>> writerQueue;
+    private Collection<TopicPartition> pausedTopics;
+    private long last_paused_time;
 
+    /*
+     * Each writer object has the following:
+     *      Connection to MySQL
+     *      FIFO msg queue
+     *      Map of assigned record keys to the writer
+     */
+    List<MySQLWriterObject> writers;
 
     private static final Logger logger = LogManager.getFormatterLogger(MySQLConsumerRunnable.class.getName());
 
@@ -93,6 +93,9 @@ public class MySQLConsumerRunnable implements Runnable {
 
         this.running = false;
 
+        pausedTopics = new HashSet<>();
+        last_paused_time = 0L;
+
         /*
          * It's imperative to first process messages from some topics before subscribing to others.
          *    When connecting to Kafka, topics will be subscribed at an interval.  When the
@@ -106,10 +109,17 @@ public class MySQLConsumerRunnable implements Runnable {
         /*
          * Start MySQL Writer thread - only one thread is needed
          */
-        executor = Executors.newFixedThreadPool(1);
-        writerQueue = new ArrayBlockingQueue(FIFO_QUEUE_SIZE);
-        writerThread = new MySQLWriterRunnable(cfg, writerQueue);
-        executor.submit(writerThread);
+        executor = Executors.newFixedThreadPool(NUM_WRITER_THREADS);
+
+        writers = new ArrayList<>();
+
+        for (int i=0; i < NUM_WRITER_THREADS; i++) {
+            MySQLWriterObject obj = new MySQLWriterObject(cfg);
+
+            writers.add(obj);
+
+            executor.submit(obj.writerThread);
+        }
     }
 
     /**
@@ -118,7 +128,8 @@ public class MySQLConsumerRunnable implements Runnable {
     public void shutdown() {
         logger.debug("MySQL consumer thread shutting down");
 
-        writerThread.shutdown();
+        for (MySQLWriterObject obj: writers)
+            obj.writerThread.shutdown();
 
         if (executor != null) executor.shutdown();
 
@@ -190,16 +201,43 @@ public class MySQLConsumerRunnable implements Runnable {
         consumer.resume(consumer.paused());
     }
 
+    private void resumePausedTopics() {
+        if (pausedTopics.size() > 0) {
+            logger.info("Resumed %d paused topics", pausedTopics.size());
+            consumer.resume(pausedTopics);
+            pausedTopics.clear();
+        }
+    }
+
+    private void pauseUnicastPrefix() {
+        Set<TopicPartition> topics = consumer.assignment();
+        last_paused_time = System.currentTimeMillis();
+
+        for (TopicPartition topic: topics) {
+            if (topic.topic().equalsIgnoreCase("openbmp.parsed.unicast_prefix")) {
+                if (! pausedTopics.contains(topic)) {
+                    logger.info("Paused openbmp.parsed.unicast_prefix");
+                    pausedTopics.add(topic);
+                    consumer.pause(pausedTopics);
+                }
+                break;
+            }
+        }
+    }
 
     /**
      * Run the thread
      */
     public void run() {
+        boolean unicast_prefix_paused = false;
+
         logger.info("Consumer started");
 
-        if (! writerThread.isDbConnected()) {
-            logger.warn("Ignoring request to run thread since DB connection couldn't be established");
-            return;
+        for (MySQLWriterObject obj: writers) {
+            if (!obj.writerThread.isDbConnected()) {
+                logger.warn("Ignoring request to run thread since DB connection couldn't be established");
+                return;
+            }
         }
 
         if (connect() == false) {
@@ -235,6 +273,11 @@ public class MySQLConsumerRunnable implements Runnable {
             // Subscribe to topics if needed
             if (! topics_all_subscribed) {
                 subscribe_prev_timestamp = subscribe_topics(subscribe_prev_timestamp);
+
+            } else if (pausedTopics.size() > 0 && (System.currentTimeMillis() - last_paused_time) > 90000) {
+                logger.info("Resumed paused %d topics", pausedTopics.size());
+                consumer.resume(pausedTopics);
+                pausedTopics.clear();
             }
 
             try {
@@ -281,8 +324,7 @@ public class MySQLConsumerRunnable implements Runnable {
                             Map<String, String> router_update = new HashMap<>();
                             router_update.put("query", sql);
 
-                            logger.debug("Added router disconnect correction to queue: size = %d", writerQueue.size());
-                            sendToWriter(router_update);
+                            sendToWriter(record.key(), router_update);
 
                         }
 
@@ -295,6 +337,8 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = router;
                         dbQuery = routerQuery;
 
+                        pauseUnicastPrefix();
+
                         // Disconnect the peers
                         String sql = routerQuery.genPeerRouterUpdate(routerConMap);
 
@@ -304,8 +348,7 @@ public class MySQLConsumerRunnable implements Runnable {
                             Map<String, String> peer_update = new HashMap<>();
                             peer_update.put("query", sql);
 
-                            logger.debug("Added peer disconnect correction to queue: size = %d", writerQueue.size());
-                            sendToWriter(peer_update);
+                            sendToWriter(record.key(), peer_update);
                         }
 
                     } else if (record.topic().equals("openbmp.parsed.peer")) {
@@ -317,13 +360,14 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = peer;
                         dbQuery = peerQuery;
 
+                        pauseUnicastPrefix();
+
                         // Add the withdrawn
                         Map<String, String> rib_update = new HashMap<String, String>();
                         rib_update.put("query", peerQuery.genRibPeerUpdate());
 
                         logger.debug("Processed peer %s / %s", peerQuery.genValuesStatement(), peerQuery.genRibPeerUpdate());
-                        logger.debug("Added peer rib update message to queue: size = %d", writerQueue.size());
-                        sendToWriter(rib_update);
+                        sendToWriter(record.key(), rib_update);
 
                     } else if (record.topic().equals("openbmp.parsed.base_attribute")) {
                         logger.trace("Parsing base_attribute message");
@@ -334,41 +378,26 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = attr_obj;
                         dbQuery = baseAttrQuery;
 
-                        // Add as_path_analysis entries
-                        String values = baseAttrQuery.genAsPathAnalysisValuesStatement();
-
-                        if (values.length() > 0) {
-                            Map<String, String> analysis_query = new HashMap<String, String>();
-                            String[] ins = baseAttrQuery.genAsPathAnalysisStatement();
-                            analysis_query.put("prefix", ins[0]);
-                            analysis_query.put("suffix", ins[1]);
-
-                            analysis_query.put("value", values);
-
-                            logger.trace("Added as_path_analysis message to queue: size = %d", writerQueue.size());
-                            sendToWriter(analysis_query);
-                        }
-
-//                        // add community_analysis
-//                        values = baseAttrQuery.genCommunityAnalysisValuesStatement();
-//                        if (values.length() > 0) {
-//                            Map<String, String> analysis_query = new HashMap<>();
-//                            String[] ins = baseAttrQuery.genCommunityAnalysisStatement();
-//                            analysis_query.put("prefix", ins[0]);
-//                            analysis_query.put("suffix", ins[1]);
-//
-//                            analysis_query.put("value", values);
-//
-//                            logger.trace("Added community_analysis message to queue: size = %d", writerQueue.size());
-//                            sendToWriter(analysis_query);
-//                        }
-
                     } else if (record.topic().equals("openbmp.parsed.unicast_prefix")) {
                         logger.trace("Parsing unicast_prefix message");
                         unicast_prefix_msg_count++;
 
                         obj = new UnicastPrefix(message.getVersion(), message.getContent());
                         dbQuery = new UnicastPrefixQuery(obj.getRowMap());
+
+                        // Add as_path_analysis entries
+                        String values = ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisValuesStatement();
+
+                        if (values.length() > 0) {
+                            Map<String, String> analysis_query = new HashMap<String, String>();
+                            String[] ins = ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisStatement();
+                            analysis_query.put("prefix", ins[0]);
+                            analysis_query.put("suffix", ins[1]);
+
+                            analysis_query.put("value", values);
+
+                            sendToWriter(record.key(), analysis_query);
+                        }
 
                     } else if (record.topic().equals("openbmp.parsed.l3vpn")) {
                         logger.trace("Parsing L3VPN prefix message");
@@ -390,7 +419,6 @@ public class MySQLConsumerRunnable implements Runnable {
 
                         obj = new LsNode(message.getVersion(), message.getContent());
                         dbQuery = new LsNodeQuery(obj.getRowMap());
-
 
                     } else if (record.topic().equals("openbmp.parsed.ls_link")) {
                         logger.trace("Parsing ls_link message");
@@ -426,7 +454,7 @@ public class MySQLConsumerRunnable implements Runnable {
                                 query.put("value", values);
 
                                 // block if space is not available
-                                sendToWriter(query);
+                                sendToWriter(record.key(), query);
                             }
                         } catch (Exception ex) {
                             logger.info("Get values Exception: " + message.getContent(), ex);
@@ -437,8 +465,17 @@ public class MySQLConsumerRunnable implements Runnable {
 
                 resume();
 
-                if (writerQueue.size() > 500 && System.currentTimeMillis() - prev_time > 10000) {
-                    logger.info("Thread writer queue is %d", writerQueue.size());
+                // Below is to check/monitor the writer queues - may move to debug only
+                if (System.currentTimeMillis() - prev_time > 10000) {
+
+                    for (int i = 0; i < NUM_WRITER_THREADS; i++) {
+                        if (writers.get(i).writerQueue.size() > 500) {
+                            logger.info("Writer %d thread: assigned = %d, queue = %d", i,
+                                        writers.get(i).assigned.size(),
+                                        writers.get(i).writerQueue.size());
+                        }
+                    }
+
                     prev_time = System.currentTimeMillis();
                 }
 
@@ -456,13 +493,36 @@ public class MySQLConsumerRunnable implements Runnable {
         logger.debug("MySQL consumer thread finished");
     }
 
-    private void sendToWriter(Map<String, String> query) {
+    private void sendToWriter(String key, Map<String, String> query) {
+        MySQLWriterObject obj = writers.get(0);
+        boolean found = false;
 
-        while (writerQueue.offer(query) == false) {
+        if (!obj.assigned.containsKey(key)) {
+            // Choose writer by lowest number of assigned record keys
+            for (int i = 1; i < NUM_WRITER_THREADS; i++) {
+                if (writers.get(i).assigned.containsKey(key)) {
+                    obj = writers.get(i);
+                    found = true;
+                    break;
+                }
+                else {
+                    if (obj.assigned.size() > writers.get(i).assigned.size())
+                        obj = writers.get(i);
+                }
+            }
+        } else {
+            found = true;
+        }
+
+        if (! found) {
+            obj.assigned.put(key, 1);
+        }
+
+        while (obj.writerQueue.offer(query) == false) {
 
             consumer.poll(1);
             try {
-                Thread.sleep(10);
+                Thread.sleep(5);
             } catch (Exception ex) {
                 break;
             }
@@ -506,7 +566,15 @@ public class MySQLConsumerRunnable implements Runnable {
 
     public synchronized boolean isRunning() { return running; }
     public synchronized BigInteger getMessageCount() { return messageCount; }
-    public synchronized Integer getQueueSize() { return writerQueue.size(); }
+    public synchronized Integer getQueueSize() {
+        Integer qSize = 0;
+
+        for (MySQLWriterObject obj: writers) {
+            qSize += obj.writerQueue.size();
+        }
+
+        return qSize;
+    }
     public synchronized Long getLast_collector_msg_time() { return last_collector_msg_time; }
 
     public long getCollector_msg_count() {
