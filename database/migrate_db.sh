@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Migrate from v1.17 to 1.18
-mysql -u root --password=<root password> openBMP <<UPGRADE
+mysql -u root --password="${MYSQL_ROOT_PASSWORD}" openBMP <<UPGRADE
 
 # Fix bgp_ls node issue where nodes were being suppressed
 drop view v_ls_nodes;
@@ -23,10 +23,6 @@ SELECT r.name as RouterName,r.ip_address as RouterIP,
     GROUP BY ls_nodes.peer_hash_id,ls_nodes.hash_id,links.mt_id;
 
 
-
-# add origin_as to path_attr_log and withdrawn_log
-alter table path_attr_log add column origin_as int(10) unsigned NOT NULL, add key idx_origin_as (origin_as);
-alter table withdrawn_log add column origin_as int(10) unsigned NOT NULL, add key idx_origin_as (origin_as);
 
 # Update as path analysis to be more efficent
 DROP TABLE IF EXISTS as_path_analysis;
@@ -64,21 +60,21 @@ delimiter ;
 
 # Added prefix_bits, idx_prefix_bits and engine to InnodB with partitions
 drop table IF EXISTS gen_prefix_validation;
-CREATE TABLE `gen_prefix_validation` (
-  `prefix` varbinary(16) NOT NULL,
-  `isIPv4` tinyint(4) NOT NULL,
-  `prefix_len` tinyint(3) unsigned NOT NULL DEFAULT '0',
-  `recv_origin_as` int(10) unsigned NOT NULL,
-  `rpki_origin_as` int(10) unsigned DEFAULT NULL,
-  `irr_origin_as` int(10) unsigned DEFAULT NULL,
-  `irr_source` varchar(32) DEFAULT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `prefix_bits` varchar(128) NOT NULL,
-  PRIMARY KEY (`prefix`,`prefix_len`,`recv_origin_as`),
-  KEY `idx_origin` (`recv_origin_as`) USING HASH,
-  KEY `idx_prefix` (`prefix`) USING BTREE,
-  KEY `idx_prefix_full` (`prefix`,`prefix_len`) USING HASH,
-  KEY `idx_prefix_bits` (`prefix_bits`) USING BTREE
+CREATE TABLE gen_prefix_validation (
+  prefix varbinary(16) NOT NULL,
+  isIPv4 tinyint(4) NOT NULL,
+  prefix_len tinyint(3) unsigned NOT NULL DEFAULT '0',
+  recv_origin_as int(10) unsigned NOT NULL,
+  rpki_origin_as int(10) unsigned DEFAULT NULL,
+  irr_origin_as int(10) unsigned DEFAULT NULL,
+  irr_source varchar(32) DEFAULT NULL,
+  timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  prefix_bits varchar(128) NOT NULL,
+  PRIMARY KEY (prefix,prefix_len,recv_origin_as),
+  KEY idx_origin (recv_origin_as) USING HASH,
+  KEY idx_prefix (prefix) USING BTREE,
+  KEY idx_prefix_full (prefix,prefix_len) USING HASH,
+  KEY idx_prefix_bits (prefix_bits) USING BTREE
 ) ENGINE=Innodb DEFAULT CHARSET=latin1
 PARTITION BY HASH (prefix_len)
 PARTITIONS 24;
@@ -150,7 +146,7 @@ create table gen_chg_stats_bypeer (
     KEY idx_interval (interval_time),
     KEY idx_peer_hash_id (peer_hash_id)
 ) Engine=Innodb CHARSET=latin1
-  PARTITION BY RANGE COLUMNS(`interval_time`)
+  PARTITION BY RANGE COLUMNS(interval_time)
   (PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
   PARTITION p2017_08 VALUES LESS THAN ('2017-09-01') ENGINE = InnoDB,
   PARTITION p2017_09 VALUES LESS THAN ('2017-10-01') ENGINE = InnoDB,
@@ -204,7 +200,7 @@ create table gen_chg_stats_byprefix (
     KEY idx_peer_hash_id (peer_hash_id),
     KEY idx_prefix_full (prefix,prefix_len)
 ) Engine=Innodb CHARSET=latin1
-  PARTITION BY RANGE COLUMNS(`interval_time`)
+  PARTITION BY RANGE COLUMNS(interval_time)
   (PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
   PARTITION p2017_08 VALUES LESS THAN ('2017-09-01') ENGINE = InnoDB,
   PARTITION p2017_09 VALUES LESS THAN ('2017-10-01') ENGINE = InnoDB,
@@ -260,7 +256,7 @@ create table gen_chg_stats_byasn (
     KEY idx_peer_hash_id (peer_hash_id),
     KEY idx_origin_as (origin_as)
 ) Engine=Innodb CHARSET=latin1
-  PARTITION BY RANGE  COLUMNS(`interval_time`)
+  PARTITION BY RANGE  COLUMNS(interval_time)
   (PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
   PARTITION p2017_08 VALUES LESS THAN ('2017-09-01') ENGINE = InnoDB,
   PARTITION p2017_09 VALUES LESS THAN ('2017-10-01') ENGINE = InnoDB,
@@ -408,8 +404,17 @@ FOR EACH ROW
     END//
 delimiter ;
 
+# add origin_as to path_attr_log and withdrawn_log
+alter IGNORE table path_attr_log add column origin_as int(10) unsigned NOT NULL, add key idx_origin_as (origin_as);
+alter IGNORE table withdrawn_log add column origin_as int(10) unsigned NOT NULL, add key idx_origin_as (origin_as);
 
 UPGRADE
 
-echo "SCHEMA_VERSION=1.18" > /data/mysql/schema-version
-
+if [ $? -eq 0 ]; then
+   echo "SCHEMA_VERSION=1.18" > /data/mysql/schema-version
+   echo "Schema upgraded to version 1.18"
+else
+   echo "ERROR: failed to upgrade schema to version 1.18. You might need to manually fix this."
+   echo "       Using a fresh DB can fix this. Run 'rm -rf /var/openbmp/mysql/*' before starting the container."
+   exit 1
+fi
