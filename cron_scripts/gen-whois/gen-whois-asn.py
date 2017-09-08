@@ -55,12 +55,12 @@ WHOIS_ATTR_MAP = {
 # ----------------------------------------------------------------
 
 WHOIS_SOURCES = OrderedDict()
-WHOIS_SOURCES['arin'] =  "whois.arin.net"
-WHOIS_SOURCES['ripe'] = "whois.ripe.net"
+#WHOIS_SOURCES['arin'] =  "whois.arin.net"
+#WHOIS_SOURCES['ripe'] = "whois.ripe.net"
 WHOIS_SOURCES['apnic'] = "whois.apnic.net"
-WHOIS_SOURCES['afrinic'] =  "whois.afrinic.net"
-WHOIS_SOURCES['lacnic'] = "whois.lacnic.net"
-WHOIS_SOURCES['ntt'] =  "rr.ntt.net"
+#WHOIS_SOURCES['afrinic'] =  "whois.afrinic.net"
+#WHOIS_SOURCES['lacnic'] = "whois.lacnic.net"
+#WHOIS_SOURCES['ntt'] =  "rr.ntt.net"
 
 # ----------------------------------------------------------------
 # Tables schema
@@ -93,10 +93,8 @@ TBL_GEN_WHOIS_ASN_SCHEMA = (
 
 #: Gets a list of all distinct ASN's
 QUERY_AS_LIST = (
-        "select distinct a.asn"
-        "   from gen_asn_stats a left join gen_whois_asn w on (a.asn = w.asn)"
-        "   where isnull(as_name)"
-        )
+        "select asn from gen_active_asns"
+    )
 
 def getASNList(db):
     """ Gets the ASN list from DB

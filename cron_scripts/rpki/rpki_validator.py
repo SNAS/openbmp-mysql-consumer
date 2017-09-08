@@ -38,12 +38,18 @@ CREATE TABLE IF NOT EXISTS %s (
     rpki_origin_as INT unsigned,
     irr_origin_as INT unsigned,
     irr_source varchar(32),
+    prefix_bits varchar(128) NOT NULL,
+    isIPv4 tinyint(4) NOT NULL,
     timestamp TIMESTAMP DEFAULT NOW() NOT NULL,
     KEY idx_origin (recv_origin_as),
     KEY idx_prefix (prefix),
     KEY idx_prefix_full (prefix,prefix_len),
+    KEY idx_prefix_bits (prefix_bits) USING BTREE
     PRIMARY KEY (prefix, prefix_len, recv_origin_as)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 """ % TBL_RPKI_GEN_PREFIX_NAME
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+PARTITION BY HASH (prefix_len)
+PARTITIONS 24
+ """ % TBL_RPKI_GEN_PREFIX_NAME
 
 TBL_RPKI_HISTORY_NAME = 'rpki_history_stats'
 TBL_RPKI_HISTORY_SCHEMA = """
@@ -57,8 +63,8 @@ CREATE TABLE IF NOT EXISTS %s (
 """ % TBL_RPKI_HISTORY_NAME
 
 QUERY_UPDATE_GEN_PREFIX_TABLE = """
-INSERT INTO %s (prefix,prefix_len,recv_origin_as,rpki_origin_as,irr_origin_as,irr_source)
-  SELECT SQL_BIG_RESULT rib.prefix_bin,rib.prefix_len,rib.origin_as as recv_origin_as,
+INSERT INTO %s (prefix,prefix_len,prefix_bits,isIPv4,recv_origin_as,rpki_origin_as,irr_origin_as,irr_source)
+  SELECT SQL_BIG_RESULT rib.prefix_bin,rib.prefix_len,rib.prefix_bits,rib.isIPv4,rib.origin_as as recv_origin_as,
                 rpki.origin_as as rpki_origin_as, w.origin_as as irr_orign_as,w.source
        FROM rib
             LEFT JOIN gen_whois_route w ON (rib.prefix_bin = w.prefix AND
@@ -72,7 +78,20 @@ INSERT INTO %s (prefix,prefix_len,recv_origin_as,rpki_origin_as,irr_origin_as,ir
                            irr_source=values(irr_source);
 """ % TBL_RPKI_GEN_PREFIX_NAME
 
-MAX_BULK_INSERT_QUEUE_SIZE = 2000
+QUERY_UPDATE_IRR_PREFIXES = """
+  UPDATE %s v
+      JOIN gen_whois_route w ON (v.prefix = w.prefix and v.prefix_len and w.prefix_len)
+      SET v.irr_origin_as = w.origin_as,v.irr_source = w.source;
+""" % TBL_RPKI_GEN_PREFIX_NAME
+
+QUERY_UPDATE_RPKI_PREFIXES = """
+  UPDATE %s v
+      JOIN rpki_validator w ON (v.prefix = w.prefix and v.prefix_len >= w.prefix_len and v.prefix_len <= w.prefix_len_max)
+      SET v.rpki_origin_as = w.origin_as;
+""" % TBL_RPKI_GEN_PREFIX_NAME
+
+MAX_BULK_INSERT_QUEUE_SIZE = 200
+
 
 def load_export(db, server, api="export.json"):
     # get json data
@@ -93,9 +112,11 @@ def load_export(db, server, api="export.json"):
         prefix, prefix_len = prefix.split('/')[0], prefix.split('/')[1]
         query += '(inet6_aton("%s"), %d, %d, %d, NOW())' % (prefix, int(prefix_len), int(max_length), int(asn))
         counter += 1
+
         if counter < MAX_BULK_INSERT_QUEUE_SIZE:
             query += ', '
         else:
+            print "doing bulk replace..."
             db.queryNoResults(query)
             query = 'REPLACE INTO rpki_validator (prefix, prefix_len, prefix_len_max, origin_as, timestamp) VALUES '
             counter = 0
@@ -215,6 +236,8 @@ def main():
     # create tables
     #db.createTable(TBL_RPKI_GEN_PREFIX_NAME, TBL_RPKI_GEN_PREFIX_SCHEMA, False)
     #db.createTable(TBL_RPKI_VALIDATOR_NAME, TBL_RPKI_VALIDATOR_SCHEMA, True)
+
+    db.createTable(TBL_RPKI_HISTORY_NAME, TBL_RPKI_HISTORY_SCHEMA, False)
     #print 'created tables successfully'
 
     # disable strict mode for session
@@ -236,10 +259,15 @@ def main():
     db.queryNoResults("DELETE FROM %s WHERE timestamp < date_sub(current_timestamp, interval 1 hour)" % TBL_RPKI_VALIDATOR_NAME)
     print "purged old roas"
 
+    #db.queryNoResults(QUERY_UPDATE_GEN_PREFIX_TABLE)
 
-    db.queryNoResults(QUERY_UPDATE_GEN_PREFIX_TABLE)
+    print "Updating gen_prefix_validation with IRR data"
+    db.queryNoResults(QUERY_UPDATE_IRR_PREFIXES)
 
-    print "Updated prefix validation table"
+    print "Updating gen_prefix_validation with RPKI data"
+    db.queryNoResults(QUERY_UPDATE_RPKI_PREFIXES)
+
+    print "Done"
 
 class dbAcccess:
     """ Database access class

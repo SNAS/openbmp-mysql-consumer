@@ -48,6 +48,8 @@ TRIGGER_CREATE_INSERT_STATUS_DEF = (
         "        declare v4_t_count bigint(20) unsigned default 0;\n"
         "        declare v6_t_count bigint(20) unsigned default 0;\n"
 
+        "        SET sql_mode = '';\n"
+
         "        SELECT transit_v4_prefixes,transit_v6_prefixes,origin_v4_prefixes,\n"
         "                    origin_v6_prefixes,timestamp\n"
         "            INTO v4_t_count,v6_t_count,v4_o_count,v6_o_count,last_ts\n"
@@ -61,29 +63,29 @@ TRIGGER_CREATE_INSERT_STATUS_DEF = (
         "            set new.timestamp = last_ts;\n"
         "        ELSE\n"
         
-        "    IF (new.transit_v4_prefixes != v4_t_count) THEN"
-        "      SET new.transit_v4_change = if(new.transit_v4_prefixes > v4_t_count,"
-        "                                   new.transit_v4_prefixes / v4_t_count,"
-        "                                   v4_t_count / new.transit_v4_prefixes * -1);"
-        "    END IF;"
+        "    IF (v4_t_count > 0 AND new.transit_v4_prefixes > 0 AND new.transit_v4_prefixes != v4_t_count)  THEN\n"
+        "      SET new.transit_v4_change = cast(if(new.transit_v4_prefixes > v4_t_count,\n"
+        "                                   new.transit_v4_prefixes / v4_t_count,\n"
+        "                                   v4_t_count / new.transit_v4_prefixes * -1) as decimal(8,5));\n"
+        "    END IF;\n"
 
-        "    IF (new.transit_v6_prefixes != v6_t_count) THEN"
-        "      SET new.transit_v6_change = if(new.transit_v6_prefixes > v6_t_count," 
-        "                                   new.transit_v6_prefixes / v6_t_count," 
-        "                                   v6_t_count / new.transit_v6_prefixes * -1);"
-        "    END IF;"
+        "    IF (v6_t_count > 0 AND new.transit_v6_prefixes > 0 AND new.transit_v6_prefixes != v6_t_count) THEN\n"
+        "      SET new.transit_v6_change = cast(if(new.transit_v6_prefixes > v6_t_count,\n" 
+        "                                   new.transit_v6_prefixes / v6_t_count,\n" 
+        "                                   v6_t_count / new.transit_v6_prefixes * -1) as decimal(8,5));\n"
+        "    END IF;\n"
 
-        "    IF (new.origin_v4_prefixes != v4_o_count) THEN"
-        "      SET new.origin_v4_change = if(new.origin_v4_prefixes > v4_o_count,"
-        "                                   new.origin_v4_prefixes / v4_o_count,"                                           
-        "                                   v4_o_count / new.origin_v4_prefixes * -1);"
-        "    END IF;"
+        "    IF (v4_o_count > 0 AND new.origin_v4_prefixes > 0 AND new.origin_v4_prefixes != v4_o_count) THEN\n"
+        "      SET new.origin_v4_change = cast(if(new.origin_v4_prefixes > v4_o_count,\n"
+        "                                   new.origin_v4_prefixes / v4_o_count,\n"                                           
+        "                                   v4_o_count / new.origin_v4_prefixes * -1) as decimal(8,5));\n"
+        "    END IF;\n"
 
-        "    IF (new.origin_v6_prefixes != v6_o_count) THEN"
-        "      SET new.origin_v6_change = if(new.origin_v6_prefixes > v6_o_count," 
-        "                                   new.origin_v6_prefixes / v6_o_count," 
-        "                                   v6_o_count / new.origin_v6_prefixes * -1);"
-        "    END IF;"
+        "    IF (v6_o_count > 0 AND new.origin_v6_prefixes > 0 AND new.origin_v6_prefixes != v6_o_count) THEN\n"
+        "      SET new.origin_v6_change = cast(if(new.origin_v6_prefixes > v6_o_count,\n" 
+        "                                   new.origin_v6_prefixes / v6_o_count,\n" 
+        "                                   v6_o_count / new.origin_v6_prefixes * -1) as decimal(8,5));\n"
+        "    END IF;\n"
 
         "        END IF;\n"
         "    END;\n"
@@ -351,6 +353,7 @@ class dbAcccess:
 
         except mysql.Error as err:
             print("ERROR: query failed - " + str(err))
+            # print "query: %r" % query
             return None
 
 
@@ -515,16 +518,24 @@ def UpdateDB(db):
             isOrigin = 0
 
         query += VALUE_fmt % (asn,isTransit,isOrigin, RECORD_DICT[asn]['transit_v4_prefixes'],
-                              RECORD_DICT[asn]['transit_v6_prefixes'],RECORD_DICT[asn]['origin_v4_prefixes'],
-                              RECORD_DICT[asn]['origin_v6_prefixes'], str(INTERVAL_TIMESTAMP))
+                             RECORD_DICT[asn]['transit_v6_prefixes'],RECORD_DICT[asn]['origin_v4_prefixes'],
+                             RECORD_DICT[asn]['origin_v6_prefixes'], str(INTERVAL_TIMESTAMP))
+
         if (idx <  totalRecords-1):
             query += ','
+
+        # squery = VALUE_fmt % (asn,isTransit,isOrigin, RECORD_DICT[asn]['transit_v4_prefixes'],
+        #                      RECORD_DICT[asn]['transit_v6_prefixes'],RECORD_DICT[asn]['origin_v4_prefixes'],
+        #                      RECORD_DICT[asn]['origin_v6_prefixes'], str(INTERVAL_TIMESTAMP))
+        # squery += " ON DUPLICATE KEY UPDATE repeats=repeats+1"
+        #
+        # db.queryNoResults(query + squery)
 
     query += " ON DUPLICATE KEY UPDATE repeats=repeats+1"
 
     print "Running bulk insert/update"
-
     db.queryNoResults(query)
+
     print "Bulk insert took %r seconds" % (db.last_query_time)
 
     print "---- Updating last ASN stats: %s " % datetime.now()
@@ -554,10 +565,10 @@ def main():
         db.createTable(TBL_GEN_ASN_STATS_LAST_NAME, TBL_GEN_ASN_STATS_LAST_SCHEMA, False)
 
         # Create trigger
-        db.createTrigger(TRIGGER_CREATE_INSERT_STATUS_DEF, TRIGGER_INSERT_STATUS_NAME, False)
+        db.createTrigger(TRIGGER_CREATE_INSERT_STATUS_DEF, TRIGGER_INSERT_STATUS_NAME, True)
 
         # Create distinct table
-        db.createTable(TBL_GEN_ACTIVE_ASNS_NAME, TBL_GEN_ACTIVE_ASNS_SCHEMA, True)
+        db.createTable(TBL_GEN_ACTIVE_ASNS_NAME, TBL_GEN_ACTIVE_ASNS_SCHEMA, False)
 
         # Update active asn table to mark all objects as old
         db.queryNoResults("UPDATE %s SET old = 1" % TBL_GEN_ACTIVE_ASNS_NAME)

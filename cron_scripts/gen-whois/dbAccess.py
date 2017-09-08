@@ -38,7 +38,7 @@ class dbAcccess:
                                host=host,
                                database=database)
 
-            self.conn.set_autocommit(True)
+            #self.conn.set_autocommit(True)
             self.cursor = self.conn.cursor(buffered=True)
 
         except mysql.Error as err:

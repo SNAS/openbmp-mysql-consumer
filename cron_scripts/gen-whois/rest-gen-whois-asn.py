@@ -82,8 +82,8 @@ TBL_GEN_WHOIS_ASN_SCHEMA = (
 # ----------------------------------------------------------------
 
 WHOIS_SOURCES = OrderedDict()
+WHOIS_SOURCES['ripe'] = "http://rest.db.ripe.net/ripe/aut-num/as"
 WHOIS_SOURCES['arin'] = "http://whois.arin.net/rest/asn/"
-#WHOIS_SOURCES['ripe'] = "http://rest.db.ripe.net/ripe/aut-num/as"
 
 # ----------------------------------------------------------------
 # Queries to get data
@@ -91,9 +91,7 @@ WHOIS_SOURCES['arin'] = "http://whois.arin.net/rest/asn/"
 
 #: Gets a list of all distinct ASN's
 QUERY_AS_LIST = (
-    "select distinct a.asn"
-    "   from gen_asn_stats a left join gen_whois_asn w on (a.asn = w.asn)"
-    "   where isnull(as_name)"
+    "select asn from gen_active_asns"
 )
 
 
@@ -117,10 +115,7 @@ def get_asn_list(db):
         try:
             asn_int = long(row[0])
 
-            if (asn_int == 0 or asn_int == 23456 or
-                    (asn_int >= 64496 and asn_int <= 65535) or
-                    (asn_int >= 65536 and asn_int <= 131071) or
-                        asn_int >= 4200000000):
+            if (asn_int == 0 or asn_int == 23456):
                 pass
             else:
                 asn_list.append(row[0])
@@ -224,10 +219,14 @@ def ripe(asn):
         print 'ERROR: RIPE request returned status code ' + str(response.status_code)
     else:
         res_json = response.json()
+
         as_attribute = res_json['objects']['object'][0]['attributes']['attribute']  # a list
         for attr in as_attribute:
             if 'name' in attr and attr['name'] in ORG_MAP:
-                record[ORG_MAP[attr['name']]] = attr['value']
+                if ORG_MAP[attr['name']] in record:
+                    record[ORG_MAP[attr['name']]] += "\n" + attr['value']
+                else:
+                    record[ORG_MAP[attr['name']]] = attr['value']
 
         if 'org' not in record:  # find org URL
             if 'org_id' in record:
@@ -238,24 +237,32 @@ def ripe(asn):
 
         org_id = record['org']
         del record['org']
-        org_res_json = requests.get('http://rest.db.ripe.net/ripe/organisation/' + org_id, headers=headers).json()
 
-        if 'objects' in org_res_json:
-            org_attribute = org_res_json['objects']['object'][0]['attributes']['attribute']
-            addr_list = []
-            for attr in org_attribute:
-                if 'name' in attr and attr['name'] in ORG_MAP:
-                    record[ORG_MAP[attr['name']]] = attr['value']
-                elif attr['name'] == 'address':
-                    # TODO: extract postal code with regex
-                    addr_list.append(attr['value'])
-            # process address
-            try:
-                record['address'] = addr_list[0] + ', ' + addr_list[1]
-                record['city'] = addr_list[2]
-                record['country'] = addr_list[3]
-            except IndexError, e:
-                print 'Error: Address returned by RIPE are not in good format: ' + e.message
+        if len(org_id) > 0:
+            org_res_json = requests.get('http://rest.db.ripe.net/ripe/organisation/' + org_id, headers=headers).json()
+
+            if 'objects' in org_res_json:
+                org_attribute = org_res_json['objects']['object'][0]['attributes']['attribute']
+                addr_list = []
+                for attr in org_attribute:
+                    if 'name' in attr and attr['name'] in ORG_MAP:
+                        if ORG_MAP[attr['name']] in record:
+                            record[ORG_MAP[attr['name']]] += "\n" + attr['value']
+                        else:
+                            record[ORG_MAP[attr['name']]] = attr['value']
+
+                    elif attr['name'] == 'address':
+                        # TODO: extract postal code with regex
+                        addr_list.append(attr['value'])
+                # process address
+                try:
+                    record['address'] = addr_list[0] + ', ' + addr_list[1]
+                    record['city'] = addr_list[2]
+                    record['country'] = addr_list[3]
+                except IndexError, e:
+                    print 'Error: Address returned by RIPE are not in good format: ' + e.message
+        elif 'remarks' not in record:
+            return {}
 
     return record
 
@@ -267,7 +274,7 @@ def apnic(db):
     """
     download_file()
     load_file_to_db(db)
-    os.remove(APNIC_FILENAME)
+    #os.remove(APNIC_FILENAME)
 
 
 def download_file():
@@ -301,15 +308,15 @@ def load_file_to_db(db):
                 # end of one record, process address
                 if len(temp_addr_list) == 4:
                     record['address'] = temp_addr_list[0] + ', ' + temp_addr_list[1]
-                    record['city'] = temp_addr_list[2]
-                    record['postal_code'] = temp_addr_list[-1]
+                    record['city'] = temp_addr_list[2][:63]
+                    record['postal_code'] = temp_addr_list[-1][:31]
                 elif len(temp_addr_list) == 3:
                     record['address'] = temp_addr_list[0] + ', ' + temp_addr_list[1]
-                    record['city'] = temp_addr_list[2]
+                    record['city'] = temp_addr_list[2][:63]
                 elif len(temp_addr_list) == 2:
                     record['address'] = temp_addr_list[0] + ', ' + temp_addr_list[1]
                 elif len(temp_addr_list) == 1:
-                    record['address'] = temp_addr_list[0]
+                    record['address'] = temp_addr_list[0][:31]
                 temp_addr_list = []
                 # add to db
                 if 'asn' in record:
@@ -378,6 +385,8 @@ def walk_whois(db, asn_list):
         # Try all sources
         for source in WHOIS_SOURCES:
             record = whois(asn, source)
+            print "record: %r" % record
+
             if 'as_name' in record:
                 record['source'] = source
                 break
@@ -546,8 +555,10 @@ def main():
     db.createTable(TBL_GEN_WHOIS_ASN_NAME, TBL_GEN_WHOIS_ASN_SCHEMA, False)
 
     asn_list = get_asn_list(db)
-    walk_whois(db, asn_list)
+
     apnic(db)
+
+    walk_whois(db, asn_list)
 
     db.close()
 
