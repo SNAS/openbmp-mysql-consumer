@@ -521,10 +521,10 @@ UPGRADE
 fi
 
 if [ $? -eq 0 ]; then
-   echo "SCHEMA_VERSION=1.18" > /data/mysql/schema-version
-   echo "Schema upgraded to version 1.18"
+   echo "SCHEMA_VERSION=1.19" > /data/mysql/schema-version
+   echo "Schema upgraded to version 1.19"
 else
-   echo "ERROR: failed to upgrade schema to version 1.18. You might need to manually fix this."
+   echo "ERROR: failed to upgrade schema to version 1.19. You might need to manually fix this."
    echo "       Using a fresh DB can fix this. Run 'rm -rf /var/openbmp/mysql/*' before starting the container."
    exit 1
 fi
