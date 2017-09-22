@@ -12,8 +12,8 @@ fi
 if [[ $SCHEMA_VERSION = "1.18" ]]; then
 
 echo "Upgrading from 1.18 to 1.19"
-mysql -u root --password="${MYSQL_ROOT_PASSWORD}" openBMP <<UPGRADE
-drop event chg_stats_bypeer;
+mysql -u root --password="${MYSQL_ROOT_PASSWORD}" -h 127.0.0.1 openBMP <<UPGRADE
+drop event IF EXISTS chg_stats_bypeer;
 CREATE EVENT chg_stats_bypeer
   ON SCHEDULE EVERY 5 MINUTE
   DO
@@ -41,7 +41,7 @@ CREATE EVENT chg_stats_bypeer
                 GROUP BY IntervalTime,w.peer_hash_id) w
             ON (c.IntervalTime = w.IntervalTime AND c.peer_hash_id = w.peer_hash_id);
 
-drop event chg_stats_byprefix;
+drop event IF EXISTS chg_stats_byprefix;
 CREATE EVENT chg_stats_byprefix
   ON SCHEDULE EVERY 5 MINUTE
   DO
@@ -72,7 +72,7 @@ CREATE EVENT chg_stats_byprefix
             ON (c.IntervalTime = w.IntervalTime AND c.peer_hash_id = w.peer_hash_id
                 AND c.prefix = w.prefix and c.prefix_len = w.prefix_len);
 
-drop event chg_stats_byasn;
+drop event IF EXISTS chg_stats_byasn;
 CREATE EVENT chg_stats_byasn
   ON SCHEDULE EVERY 5 MINUTE
   DO
@@ -109,7 +109,7 @@ else
 # --------------------------------------------------------------
 echo "Upgrading from 1.17 to 1.19"
 
-mysql -u root --password="${MYSQL_ROOT_PASSWORD}" openBMP <<UPGRADE
+mysql -u root --password="${MYSQL_ROOT_PASSWORD}" -h 127.0.0.1 openBMP <<UPGRADE
 
 # Fix bgp_ls node issue where nodes were being suppressed
 drop view v_ls_nodes;
