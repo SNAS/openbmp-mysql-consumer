@@ -1,6 +1,114 @@
 #!/usr/bin/env bash
 
-# Migrate from v1.17 to 1.18
+if [[ -f /data/mysql/schema-version ]]; then
+    source /data/mysql/schema-version
+else
+    SCHEMA_VERSION=""
+fi
+
+# --------------------------------------------------------------
+# Version 1.18 to 1.19
+# --------------------------------------------------------------
+if [[ $SCHEMA_VERSION = "1.18" ]]; then
+
+echo "Upgrading from 1.18 to 1.19"
+mysql -u root --password="${MYSQL_ROOT_PASSWORD}" openBMP <<UPGRADE
+drop event chg_stats_bypeer;
+CREATE EVENT chg_stats_bypeer
+  ON SCHEDULE EVERY 5 MINUTE
+  DO
+      # Count updates and withdraws by interval
+      REPLACE INTO gen_chg_stats_bypeer (interval_time, peer_hash_id, updates,withdraws)
+        SELECT c.IntervalTime,if (c.peer_hash_id is null, w.peer_hash_id, c.peer_hash_id) as peer_hash_id,
+              if (c.updates is null, 0, c.updates) as updates,
+              if (w.withdraws is null, 0, w.withdraws) as withdraws
+          FROM
+            (SELECT
+                from_unixtime(unix_timestamp(c.timestamp) - unix_timestamp(c.timestamp) % 60.0) AS IntervalTime,
+                peer_hash_id, count(c.peer_hash_id) as updates
+              FROM path_attr_log c
+              WHERE c.timestamp >= date_format(date_sub(current_timestamp, INTERVAL 25 MINUTE), "%Y-%m-%d %H:%i:00")
+                    AND c.timestamp <= date_format(current_timestamp, "%Y-%m-%d %H:%i:00")
+              GROUP BY IntervalTime,c.peer_hash_id) c
+
+           LEFT JOIN
+               (SELECT
+                  from_unixtime(unix_timestamp(w.timestamp) - unix_timestamp(w.timestamp) % 60.0) AS IntervalTime,
+                  peer_hash_id, count(w.peer_hash_id) as withdraws
+                FROM withdrawn_log w
+                WHERE w.timestamp >= date_format(date_sub(current_timestamp, INTERVAL 25 MINUTE), "%Y-%m-%d %H:%i:00")
+                      AND w.timestamp <= date_format(current_timestamp, "%Y-%m-%d %H:%i:00")
+                GROUP BY IntervalTime,w.peer_hash_id) w
+            ON (c.IntervalTime = w.IntervalTime AND c.peer_hash_id = w.peer_hash_id);
+
+drop event chg_stats_byprefix;
+CREATE EVENT chg_stats_byprefix
+  ON SCHEDULE EVERY 5 MINUTE
+  DO
+      # Count updates and withdraws by interval
+      REPLACE INTO gen_chg_stats_byprefix (interval_time, peer_hash_id, prefix, prefix_len, updates,withdraws)
+        SELECT c.IntervalTime,if (c.peer_hash_id is null, w.peer_hash_id, c.peer_hash_id) as peer_hash_id,
+              if (c.prefix is null, w.prefix, c.prefix) as prefix,
+              if (c.prefix is null, w.prefix_len, c.prefix_len) as prefix_len,
+              if (c.updates is null, 0, c.updates) as updates,
+              if (w.withdraws is null, 0, w.withdraws) as withdraws
+          FROM
+            (SELECT
+                from_unixtime(unix_timestamp(c.timestamp) - unix_timestamp(c.timestamp) % 60.0) AS IntervalTime,
+                peer_hash_id, prefix, prefix_len, count(c.peer_hash_id) as updates
+              FROM path_attr_log c
+              WHERE c.timestamp >= date_format(date_sub(current_timestamp, INTERVAL 25 MINUTE), "%Y-%m-%d %H:%i:00")
+                    AND c.timestamp <= date_format(current_timestamp, "%Y-%m-%d %H:%i:00")
+              GROUP BY IntervalTime,c.peer_hash_id,prefix,prefix_len) c
+
+           LEFT JOIN
+               (SELECT
+                  from_unixtime(unix_timestamp(w.timestamp) - unix_timestamp(w.timestamp) % 60.0) AS IntervalTime,
+                  peer_hash_id, prefix, prefix_len, count(w.peer_hash_id) as withdraws
+                FROM withdrawn_log w
+                WHERE w.timestamp >= date_format(date_sub(current_timestamp, INTERVAL 25 MINUTE), "%Y-%m-%d %H:%i:00")
+                      AND w.timestamp <= date_format(current_timestamp, "%Y-%m-%d %H:%i:00")
+                GROUP BY IntervalTime,w.peer_hash_id,prefix,prefix_len) w
+            ON (c.IntervalTime = w.IntervalTime AND c.peer_hash_id = w.peer_hash_id
+                AND c.prefix = w.prefix and c.prefix_len = w.prefix_len);
+
+drop event chg_stats_byasn;
+CREATE EVENT chg_stats_byasn
+  ON SCHEDULE EVERY 5 MINUTE
+  DO
+      # Count updates and withdraws by interval
+      REPLACE INTO gen_chg_stats_byasn (interval_time, peer_hash_id,origin_as, updates,withdraws)
+        SELECT c.IntervalTime,if (c.peer_hash_id is null, w.peer_hash_id, c.peer_hash_id) as peer_hash_id,
+              if (c.origin_as is null, w.origin_as, c.origin_as),
+              if (c.updates is null, 0, c.updates) as updates,
+              if (w.withdraws is null, 0, w.withdraws) as withdraws
+          FROM
+            (SELECT
+                from_unixtime(unix_timestamp(c.timestamp) - unix_timestamp(c.timestamp) % 60.0) AS IntervalTime,
+                peer_hash_id, origin_as, count(c.peer_hash_id) as updates
+              FROM path_attr_log c
+              WHERE c.timestamp >= date_format(date_sub(current_timestamp, INTERVAL 25 MINUTE), "%Y-%m-%d %H:%i:00")
+                    AND c.timestamp <= date_format(current_timestamp, "%Y-%m-%d %H:%i:00")
+              GROUP BY IntervalTime,c.peer_hash_id,origin_as) c
+
+           LEFT JOIN
+               (SELECT
+                  from_unixtime(unix_timestamp(w.timestamp) - unix_timestamp(w.timestamp) % 60.0) AS IntervalTime,
+                  peer_hash_id, origin_as, count(w.peer_hash_id) as withdraws
+                FROM withdrawn_log w
+                WHERE w.timestamp >= date_format(date_sub(current_timestamp, INTERVAL 25 MINUTE), "%Y-%m-%d %H:%i:00")
+                      AND w.timestamp <= date_format(current_timestamp, "%Y-%m-%d %H:%i:00")
+                GROUP BY IntervalTime,w.peer_hash_id,origin_as) w
+            ON (c.IntervalTime = w.IntervalTime AND c.peer_hash_id = w.peer_hash_id
+                and c.origin_as = w.origin_as);
+UPGRADE
+
+else
+# --------------------------------------------------------------
+# Version 1.17 to 1.19
+# --------------------------------------------------------------
+echo "Upgrading from 1.17 to 1.19"
+
 mysql -u root --password="${MYSQL_ROOT_PASSWORD}" openBMP <<UPGRADE
 
 # Fix bgp_ls node issue where nodes were being suppressed
@@ -409,6 +517,8 @@ alter IGNORE table path_attr_log add column origin_as int(10) unsigned NOT NULL,
 alter IGNORE table withdrawn_log add column origin_as int(10) unsigned NOT NULL, add key idx_origin_as (origin_as);
 
 UPGRADE
+
+fi
 
 if [ $? -eq 0 ]; then
    echo "SCHEMA_VERSION=1.18" > /data/mysql/schema-version

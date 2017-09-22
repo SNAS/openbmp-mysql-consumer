@@ -6,16 +6,92 @@ source /etc/default/openbmpd
 # Log file to log command output
 LOG_FILE=/var/log/openbmp-db-maint.log
 
+echo "$(date): DB Script done" > $LOG_FILE
+
 # Command for mysql to run the statements
-MYSQL_CMD="/usr/bin/mysql -u $OPENBMP_DB_USER --password=$OPENBMP_DB_PASSWORD -h $MYSQL_HOST openBMP"
+MYSQL_CMD="/usr/bin/mysql -u $OPENBMP_DB_USER --password=$OPENBMP_DB_PASSWORD -h 127.0.0.1 openBMP"
+
+YEAR=$(date -u "+%Y")
+MONTH=$((10#$(date -u "+%m")))      # Remove zero padding
+DAY=$((10#$(date -u "+%d")))        # Remove zero padding
+
+# Week partition name example
+#   PARTITION p2017_10_w1 VALUES LESS THAN (to_days('2017-10-08'))
+
+if [[ $DAY -lt 1 ]]; then
+    WEEK=4
+elif [[ $DAY -lt 8 ]]; then
+    WEEK=1
+elif [[ $DAY -lt 15 ]]; then
+    WEEK=2
+elif [[ $DAY -lt 25 ]]; then
+    WEEK=3
+else
+    WEEK=4
+fi
+
+
+# Generate weeks partition name
+if [[ $WEEK -gt 2 ]]; then
+    P_MONTH=$(printf "%02d" $MONTH)
+    WEEK_PARTITION_NAME="p${YEAR}_${P_MONTH}_w$((WEEK - 2))"
+else
+    if [[ $MONTH -eq 1 ]]; then
+        WEEK_PARTITION_NAME="p$((YEAR - 1))_12_w4"
+    else
+        P_MONTH=$(printf "%02d" $((MONTH - 1)))
+        WEEK_PARTITION_NAME="p${YEAR}_${P_MONTH}_w4"
+    fi
+fi
+#echo "Delete week partition name is $WEEK_PARTITION_NAME"
+
+# Generate months partition name
+if [[ $MONTH -eq 1 ]]; then
+    MONTH_PARTITION_NAME="p$((YEAR - 1))_12"
+else
+    P_MONTH=$(printf "%02d" $((MONTH - 1)))
+    MONTH_PARTITION_NAME="p${YEAR}_${P_MONTH}"
+fi
+
+#echo "Delete month partition name is $MONTH_PARTITION_NAME"
+
 
 #
-# Order matters
+# Drop table partitions that are weekly
 #
+    echo "$(date): Dropping path_attr_log partition $WEEK_PARTITION_NAME" >> $LOG_FILE
+    $MYSQL_CMD -e "alter table path_attr_log drop partition ${WEEK_PARTITION_NAME};" >> $LOG_FILE 2>&1
 
-# Clean the RIB table
-$MYSQL_CMD -e 'DELETE r FROM rib r JOIN bgp_peers p ON (r.peer_hash_id = p.hash_id) WHERE r.db_timestamp < p.timestamp;' > $LOG_FILE 2>&1
 
-# Clean the Path table
-$MYSQL_CMD -e 'delete p from path_attrs p left join rib on (p.hash_id = rib.path_attr_hash_id) where isnull(rib.hash_id);' >> $LOG_FILE 2>&1
+#
+# Drop table partitions that are monthly
+#
+if [[ $DAY -gt 14 ]]; then
+    echo "$(date): Dropping withdrawn_log partition $MONTH_PARTITION_NAME" >> $LOG_FILE
+    $MYSQL_CMD -e "alter table withdrawn_log drop partition ${MONTH_PARTITION_NAME};" >> $LOG_FILE 2>&1
 
+    echo "$(date): Dropping gen_chg_stats_byprefix partition $MONTH_PARTITION_NAME" >> $LOG_FILE
+    $MYSQL_CMD -e "alter table gen_chg_stats_byprefix drop partition ${MONTH_PARTITION_NAME};" >> $LOG_FILE 2>&1
+
+    echo "$(date): Dropping gen_chg_stats_byasn partition $MONTH_PARTITION_NAME" >> $LOG_FILE
+    $MYSQL_CMD -e "alter table gen_chg_stats_byasn drop partition ${MONTH_PARTITION_NAME};" >> $LOG_FILE 2>&1
+fi
+
+
+# Clean the RIB table - Disabled since we track updated prefixes that were previously withdrawn
+    #echo "$(date): Deleting old rib entries" >> $LOG_FILE
+    ##$MYSQL_CMD -e 'DELETE r FROM rib r JOIN bgp_peers p ON (r.peer_hash_id = p.hash_id) WHERE r.first_added_timestamp < p.timestamp;' >> $LOG_FILE 2>&1
+    #$MYSQL_CMD -e 'DELETE FROM rib where isWithdrawn = True;' >> $LOG_FILE 2>&1
+    #sleep 5
+
+# Clean as path analysis table
+    echo "$(date): Deleting old as_path_analysis entries" >> $LOG_FILE
+    $MYSQL_CMD -e 'DELETE FROM as_path_analysis where isWithdrawn = True;' >> $LOG_FILE 2>&1
+    sleep 5
+
+# Clean the Path table - disable since the time it takes to run this doesn't free that much data
+    #echo "$(date): Deleting old path entries" >> $LOG_FILE
+    #$MYSQL_CMD -e 'DELETE p from path_attrs p left join rib on (rib.iswithdrawn = True and p.hash_id = rib.path_attr_hash_id) where isnull(rib.hash_id);' >> $LOG_FILE 2>&1
+
+
+echo "$(date): DB Script done" >> $LOG_FILE

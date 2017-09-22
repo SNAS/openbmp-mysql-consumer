@@ -465,8 +465,7 @@ def UpdatePrefixesCountsThread(db, query, asn_list):
     :return: tuple list of tuples (asn, v4_prefixes, v6_prefixes)
     """
     results = []
-    v4_prefixes = 0
-    v6_prefixes = 0
+    result_dict = {}
 
     # Run query and store data
     rows = db.query(query % {'asn_list': asn_list})
@@ -474,12 +473,16 @@ def UpdatePrefixesCountsThread(db, query, asn_list):
     print "   ASNs=(%s) Query took %r seconds" % (asn_list, db.last_query_time)
 
     for row in rows:
-        if row[1] == 1:   # IPv4
-            v4_prefixes = int(row[2])
-        else: # IPv6
-            v6_prefixes = int(row[2])
+        if int(row[0]) not in result_dict:
+            result_dict[int(row[0])] = { "v4": 0, "v6": 0}
 
-        results.append((int(row[0]), v4_prefixes, v6_prefixes))
+        if row[1] == 1:   # IPv4
+            result_dict[int(row[0])]['v4'] = int(row[2])
+        else:  # IPv6
+            result_dict[int(row[0])]['v6'] = int(row[2])
+
+    for asn in result_dict:
+        results.append((asn, result_dict[asn]['v4'], result_dict[asn]['v6']))
 
     return results
 
