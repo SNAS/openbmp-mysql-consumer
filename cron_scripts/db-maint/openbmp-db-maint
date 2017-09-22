@@ -86,8 +86,15 @@ fi
 
 # Clean as path analysis table
     echo "$(date): Deleting old as_path_analysis entries" >> $LOG_FILE
-    $MYSQL_CMD -e 'DELETE FROM as_path_analysis where isWithdrawn = True;' >> $LOG_FILE 2>&1
-    sleep 5
+    count=1
+    done=1
+    while [ $done -eq 1 -a $count -lt 1000 ]; do
+        $MYSQL_CMD -vv -e 'DELETE FROM as_path_analysis where isWithdrawn = True; LIMIT 50000' | grep -q ", 0 rows"
+        done=$?
+        count=$((count + 1))
+    done
+
+    echo "$(date): Finished deleting as_path_analysis entries, count is $count" >> $LOG_FILE
 
 # Clean the Path table - disable since the time it takes to run this doesn't free that much data
     #echo "$(date): Deleting old path entries" >> $LOG_FILE
