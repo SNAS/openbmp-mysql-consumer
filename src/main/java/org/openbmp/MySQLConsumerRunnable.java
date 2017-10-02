@@ -385,19 +385,17 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = new UnicastPrefix(message.getVersion(), message.getContent());
                         dbQuery = new UnicastPrefixQuery(obj.getRowMap());
 
+                        // Mark previous entries as withdrawn before update
+                        Map<String, String> withdraw_update = new HashMap<String, String>();
+                        withdraw_update.put("query",
+                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawUpdate());
+
+                        sendToWriter(record.key(), withdraw_update);
+
                         // Add as_path_analysis entries
-                        String values = ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisValuesStatement();
-
-                        if (values.length() > 0) {
-                            Map<String, String> analysis_query = new HashMap<String, String>();
-                            String[] ins = ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisStatement();
-                            analysis_query.put("prefix", ins[0]);
-                            analysis_query.put("suffix", ins[1]);
-
-                            analysis_query.put("value", values);
-
-                            sendToWriter(record.key(), analysis_query);
-                        }
+                        addBulkQuerytoWriter(record.key(),
+                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisStatement(),
+                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisValuesStatement());
 
                     } else if (record.topic().equals("openbmp.parsed.l3vpn")) {
                         logger.trace("Parsing L3VPN prefix message");
@@ -443,23 +441,8 @@ public class MySQLConsumerRunnable implements Runnable {
                      * Add query to writer queue
                      */
                     if (obj != null) {
-                        try {
-                            String values = dbQuery.genValuesStatement();
-
-                            if (values.length() > 0) {
-                                // Add statement and value to query map
-                                String[] ins = dbQuery.genInsertStatement();
-                                query.put("prefix", ins[0]);
-                                query.put("suffix", ins[1]);
-                                query.put("value", values);
-
-                                // block if space is not available
-                                sendToWriter(record.key(), query);
-                            }
-                        } catch (Exception ex) {
-                            logger.info("Get values Exception: " + message.getContent(), ex);
-                        }
-
+                        addBulkQuerytoWriter(record.key(), dbQuery.genInsertStatement(),
+                                             dbQuery.genValuesStatement());
                     }
                 }
 
@@ -527,6 +510,34 @@ public class MySQLConsumerRunnable implements Runnable {
                 break;
             }
         }
+    }
+
+    /**
+     * Add bulk query to writer
+     *
+     * \details This method will add the bulk object to the writer.
+     *
+     * @param key           Message key in kafka, such as the hash id
+     * @param statement     String array statement from Query.getInsertStatement()
+     * @param values        Values string from Query.getValuesStatement()
+     */
+    private void addBulkQuerytoWriter(String key, String [] statement, String values) {
+        Map<String, String> query = new HashMap<>();
+
+        try {
+            if (values.length() > 0) {
+                // Add statement and value to query map
+                query.put("prefix", statement[0]);
+                query.put("suffix", statement[1]);
+                query.put("value", values);
+
+                // block if space is not available
+                sendToWriter(key, query);
+            }
+        } catch (Exception ex) {
+            logger.info("Get values Exception: ", ex);
+        }
+
     }
 
     /**

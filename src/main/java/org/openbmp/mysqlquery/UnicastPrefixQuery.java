@@ -77,6 +77,34 @@ public class UnicastPrefixQuery extends Query{
     }
 
     /**
+     * Generate withdraw update for as_path_analysis
+     *
+     * \details This statement is required before any update so that it marks the old
+     *      entries as withdrawn.  This also works for withdrawn prefixes.
+     *
+     * @return Bulk update statement to mark entries as withdrawn
+     */
+    public String genAsPathAnalysisWithdrawUpdate() {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("UPDATE as_path_analysis SET iswithdrawn = 1 WHERE rib_hash_id in (");
+
+        for (int i=0; i < rowMap.size(); i++) {
+            if (i > 0)
+                sb.append(',');
+
+            sb.append('"');
+            sb.append(lookupValue(MsgBusFields.HASH, i));
+            sb.append('"');
+        }
+
+        sb.append(") and iswithdrawn = False");
+
+        return sb.toString();
+    }
+
+
+    /**
      * Generate MySQL insert/update statement, sans the values for as_path_analysis
      *
      * @return Two strings are returned
@@ -86,8 +114,11 @@ public class UnicastPrefixQuery extends Query{
     public String[] genAsPathAnalysisStatement() {
         String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right," +
                 "rib_hash_id,prefix_len,prefix_bin,isIPv4,iswithdrawn)" +
-                " VALUES ", "" };
+                " VALUES ",
+                "ON DUPLICATE KEY UPDATE timestamp=values(timestamp),iswithdrawn=values(iswithdrawn)" };
         return stmt;
+
+
     }
 
     /**
@@ -104,24 +135,7 @@ public class UnicastPrefixQuery extends Query{
          */
         for (int i=0; i < rowMap.size(); i++) {
 
-            if ( ((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del")) {
-                if (sb.length() > 0)
-                    sb.append(',');
-
-                sb.append('(');
-                sb.append('0');
-                sb.append(',');
-                sb.append('0');
-                sb.append(',');
-                sb.append('0'); // Right ASN is zero
-                sb.append(",'");
-                sb.append(lookupValue(MsgBusFields.HASH, i));
-                sb.append("',");
-                sb.append("0,0,"); // prefix len and prefix_bin doesn't matter for delete
-                sb.append('1'); // isIPv4 - doesn't matter for delete
-                sb.append(",1)"); // Withdrawn
-
-            } else {
+            if  (((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("add")) {
 
                 String as_path_str = ((String) lookupValue(MsgBusFields.AS_PATH, i)).trim();
                 as_path_str = as_path_str.replaceAll("[{}]", "");

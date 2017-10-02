@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+MYSQL_CMD="mysql -u root --password="${MYSQL_ROOT_PASSWORD}" -h 127.0.0.1 openBMP"
+
+CUR_VERSION="1.20"
+
 if [[ -f /data/mysql/schema-version ]]; then
     source /data/mysql/schema-version
 else
@@ -7,12 +11,46 @@ else
 fi
 
 # --------------------------------------------------------------
+# Version 1.19 to 1.20
+# --------------------------------------------------------------
+
+if [[ $SCHEMA_VERSION = "1.19" ]]; then
+
+echo "Upgrading from 1.19 to $CUR_VERSION"
+$MYSQL_CMD <<UPGRADE
+  DROP trigger IF EXISTS upd_as_path_analysis;
+
+DROP TABLE IF EXISTS as_path_analysis;
+CREATE TABLE as_path_analysis (
+  asn int(10) unsigned NOT NULL,
+  asn_left int(10) unsigned NOT NULL DEFAULT 0,
+  asn_right int(10) unsigned NOT NULL DEFAULT 0,
+  rib_hash_id char(32) NOT NULL,
+  prefix_len int(10) unsigned NOT NULL,
+  prefix_bin varbinary(16) NOT NULL,
+  isIPv4 bit(1) NOT NULL DEFAULT b'1',
+  isWithdrawn bit(1) NOT NULL DEFAULT b'0',
+  timestamp datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
+  PRIMARY KEY (asn,asn_left,asn_right,rib_hash_id),
+  KEY idx_asn_left (asn_left),
+  KEY idx_asn_right (asn_right),
+  KEY idx_prefix_full (prefix_bin,prefix_len),
+  KEY idx_rib_hash_id (rib_hash_id),
+  KEY idx_withdrawn (isWithdrawn)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+    PARTITION BY KEY (asn)
+    PARTITIONS 48;
+
+  ALTER TABLE gen_chg_stats_byprefix ROW_FORMAT=compressed KEY_BLOCK_SIZE=4;
+UPGRADE
+
+# --------------------------------------------------------------
 # Version 1.18 to 1.19
 # --------------------------------------------------------------
-if [[ $SCHEMA_VERSION = "1.18" ]]; then
+elif [[ $SCHEMA_VERSION = "1.18" ]]; then
 
-echo "Upgrading from 1.18 to 1.19"
-mysql -u root --password="${MYSQL_ROOT_PASSWORD}" -h 127.0.0.1 openBMP <<UPGRADE
+echo "Upgrading from 1.18 to $CUR_VERSION"
+$MYSQL_CMD <<UPGRADE
 drop event IF EXISTS chg_stats_bypeer;
 CREATE EVENT chg_stats_bypeer
   ON SCHEDULE EVERY 5 MINUTE
@@ -101,15 +139,41 @@ CREATE EVENT chg_stats_byasn
                 GROUP BY IntervalTime,w.peer_hash_id,origin_as) w
             ON (c.IntervalTime = w.IntervalTime AND c.peer_hash_id = w.peer_hash_id
                 and c.origin_as = w.origin_as);
+
+    DROP trigger IF EXISTS upd_as_path_analysis;
+
+DROP TABLE IF EXISTS as_path_analysis;
+CREATE TABLE as_path_analysis (
+  asn int(10) unsigned NOT NULL,
+  asn_left int(10) unsigned NOT NULL DEFAULT 0,
+  asn_right int(10) unsigned NOT NULL DEFAULT 0,
+  rib_hash_id char(32) NOT NULL,
+  prefix_len int(10) unsigned NOT NULL,
+  prefix_bin varbinary(16) NOT NULL,
+  isIPv4 bit(1) NOT NULL DEFAULT b'1',
+  isWithdrawn bit(1) NOT NULL DEFAULT b'0',
+  timestamp datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
+  PRIMARY KEY (asn,asn_left,asn_right,rib_hash_id),
+  KEY idx_asn_left (asn_left),
+  KEY idx_asn_right (asn_right),
+  KEY idx_prefix_full (prefix_bin,prefix_len),
+  KEY idx_rib_hash_id (rib_hash_id),
+  KEY idx_withdrawn (isWithdrawn)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+    PARTITION BY KEY (asn)
+    PARTITIONS 48;
+
+  ALTER TABLE gen_chg_stats_byprefix ROW_FORMAT=compressed KEY_BLOCK_SIZE=4;
+
 UPGRADE
 
 else
 # --------------------------------------------------------------
 # Version 1.17 to 1.19
 # --------------------------------------------------------------
-echo "Upgrading from 1.17 to 1.19"
+echo "Upgrading from 1.17 to $CUR_VERSION"
 
-mysql -u root --password="${MYSQL_ROOT_PASSWORD}" -h 127.0.0.1 openBMP <<UPGRADE
+$MYSQL_CMD <<UPGRADE
 
 # Fix bgp_ls node issue where nodes were being suppressed
 drop view v_ls_nodes;
@@ -147,18 +211,22 @@ CREATE TABLE as_path_analysis (
   PRIMARY KEY (asn,asn_left,asn_right,rib_hash_id),
   KEY idx_asn_left (asn_left),
   KEY idx_asn_right (asn_right),
-  KEY idx_asn_left_right (asn_left,asn_right),
   KEY idx_prefix_full (prefix_bin,prefix_len),
   KEY idx_rib_hash_id (rib_hash_id),
   KEY idx_withdrawn (isWithdrawn)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+    PARTITION BY KEY (asn)
+    PARTITIONS 48;
 
+DROP trigger IF EXISTS upd_as_path_analysis;
+DROP trigger IF EXISTS ins_as_path_analysis;
 delimiter /
-CREATE TRIGGER upd_as_path_analysis BEFORE UPDATE ON as_path_analysis
+CREATE TRIGGER ins_as_path_analysis BEFORE INSERT ON as_path_analysis
 FOR EACH ROW
     BEGIN
-        IF (new.asn = 0 AND new.isWithdrawn = 0) THEN
-            UPDATE as_path_analysis SET isWithdrawn = 1 WHERE rib_hash_id = new.rib_hash_id;
+        IF (new.asn = 0 AND new.isWithdrawn = 1) THEN
+            UPDATE as_path_analysis SET isWithdrawn = 1 WHERE rib_hash_id = new.rib_hash_id and asn != 0;
+            SET new.rib_hash_id = null;
             SIGNAL SQLSTATE '45000'
                 SET MESSAGE_TEXT = 'NoError, prefixes set to withdrawn state';
         END IF;
@@ -183,7 +251,7 @@ CREATE TABLE gen_prefix_validation (
   KEY idx_prefix (prefix) USING BTREE,
   KEY idx_prefix_full (prefix,prefix_len) USING HASH,
   KEY idx_prefix_bits (prefix_bits) USING BTREE
-) ENGINE=Innodb DEFAULT CHARSET=latin1
+) ENGINE=Innodb DEFAULT CHARSET=latin1 KEY_BLOCK_SIZE=4 ROW_FORMAT=COMPRESSED
 PARTITION BY HASH (prefix_len)
 PARTITIONS 24;
 
@@ -255,10 +323,7 @@ create table gen_chg_stats_bypeer (
     KEY idx_peer_hash_id (peer_hash_id)
 ) Engine=Innodb CHARSET=latin1
   PARTITION BY RANGE COLUMNS(interval_time)
-  (PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
-  PARTITION p2017_08 VALUES LESS THAN ('2017-09-01') ENGINE = InnoDB,
-  PARTITION p2017_09 VALUES LESS THAN ('2017-10-01') ENGINE = InnoDB,
-  PARTITION p2017_10 VALUES LESS THAN ('2017-11-01') ENGINE = InnoDB,
+  (PARTITION p2017_10 VALUES LESS THAN ('2017-11-01') ENGINE = InnoDB,
   PARTITION p2017_11 VALUES LESS THAN ('2017-12-01') ENGINE = InnoDB,
   PARTITION p2017_12 VALUES LESS THAN ('2018-01-01') ENGINE = InnoDB,
   PARTITION p2018_01 VALUES LESS THAN ('2018-02-01') ENGINE = InnoDB,
@@ -307,12 +372,9 @@ create table gen_chg_stats_byprefix (
     KEY idx_interval (interval_time),
     KEY idx_peer_hash_id (peer_hash_id),
     KEY idx_prefix_full (prefix,prefix_len)
-) Engine=Innodb CHARSET=latin1
+) Engine=Innodb CHARSET=latin1 KEY_BLOCK_SIZE=4 ROW_FORMAT=COMPRESSED
   PARTITION BY RANGE COLUMNS(interval_time)
-  (PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
-  PARTITION p2017_08 VALUES LESS THAN ('2017-09-01') ENGINE = InnoDB,
-  PARTITION p2017_09 VALUES LESS THAN ('2017-10-01') ENGINE = InnoDB,
-  PARTITION p2017_10 VALUES LESS THAN ('2017-11-01') ENGINE = InnoDB,
+  (PARTITION p2017_10 VALUES LESS THAN ('2017-11-01') ENGINE = InnoDB,
   PARTITION p2017_11 VALUES LESS THAN ('2017-12-01') ENGINE = InnoDB,
   PARTITION p2017_12 VALUES LESS THAN ('2018-01-01') ENGINE = InnoDB,
   PARTITION p2018_01 VALUES LESS THAN ('2018-02-01') ENGINE = InnoDB,
@@ -365,10 +427,7 @@ create table gen_chg_stats_byasn (
     KEY idx_origin_as (origin_as)
 ) Engine=Innodb CHARSET=latin1
   PARTITION BY RANGE  COLUMNS(interval_time)
-  (PARTITION p2017_07 VALUES LESS THAN ('2017-08-01') ENGINE = InnoDB,
-  PARTITION p2017_08 VALUES LESS THAN ('2017-09-01') ENGINE = InnoDB,
-  PARTITION p2017_09 VALUES LESS THAN ('2017-10-01') ENGINE = InnoDB,
-  PARTITION p2017_10 VALUES LESS THAN ('2017-11-01') ENGINE = InnoDB,
+  (PARTITION p2017_10 VALUES LESS THAN ('2017-11-01') ENGINE = InnoDB,
   PARTITION p2017_11 VALUES LESS THAN ('2017-12-01') ENGINE = InnoDB,
   PARTITION p2017_12 VALUES LESS THAN ('2018-01-01') ENGINE = InnoDB,
   PARTITION p2018_01 VALUES LESS THAN ('2018-02-01') ENGINE = InnoDB,
@@ -521,10 +580,10 @@ UPGRADE
 fi
 
 if [ $? -eq 0 ]; then
-   echo "SCHEMA_VERSION=1.19" > /data/mysql/schema-version
-   echo "Schema upgraded to version 1.19"
+   echo "SCHEMA_VERSION=$CUR_VERSION" > /data/mysql/schema-version
+   echo "Schema upgraded to version $CUR_VERSION"
 else
-   echo "ERROR: failed to upgrade schema to version 1.19. You might need to manually fix this."
+   echo "ERROR: failed to upgrade schema to version $CUR_VERSION. You might need to manually fix this."
    echo "       Using a fresh DB can fix this. Run 'rm -rf /var/openbmp/mysql/*' before starting the container."
    exit 1
 fi
