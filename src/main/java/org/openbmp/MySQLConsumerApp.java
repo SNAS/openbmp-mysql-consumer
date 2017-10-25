@@ -135,7 +135,9 @@ public class MySQLConsumerApp
         try {
             Connection con = DriverManager.getConnection(
                     "jdbc:mariadb://" + cfg.getDbHost() + "/" + cfg.getDbName() +
-                            "?tcpKeepAlive=1&socketTimeout=1000&useCompression=true&autoReconnect=true&allowMultiQueries=true",
+                            "?tcpKeepAlive=1&socketTimeout=1000&useCompression=true&autoReconnect=true" +
+                            "&allowMultiQueries=true&useBatchMultiSend=false",
+                            //"&allowMultiQueries=true&useBatchMultiSend=true&useBatchMultiSendNumber=200",
                     cfg.getDbUser(), cfg.getDbPw());
             con.close();
 

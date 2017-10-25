@@ -23,6 +23,8 @@ public class MySQLWriterObject {
     ///< Map of assigned record keys to this writer object/thread
     Map<String, Integer> assigned;
 
+    ///< Number of times this object has been above queue high threashold
+    Integer above_count;
 
     MySQLWriterRunnable writerThread;
 
@@ -45,5 +47,6 @@ public class MySQLWriterObject {
         assigned = new HashMap<>();
         writerQueue = new ArrayBlockingQueue(FIFO_QUEUE_SIZE);
         writerThread = new MySQLWriterRunnable(cfg, writerQueue);
+        above_count = 0;
     }
 }

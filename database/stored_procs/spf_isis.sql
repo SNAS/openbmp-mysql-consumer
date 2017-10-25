@@ -20,10 +20,14 @@ BEGIN
     declare igp_rib_table_name varchar(64) default 'igp_isis';
     declare node_hash_id char(32);
     declare node_router_id char(46);
+    declare node_router_name char(255);
+    declare root_node_router_id char(46);
     declare nh_node_hash_id char(32);
     declare nh_metric int default '0';
-    declare path_hash_ids varchar(2900);
-    declare path_router_ids varchar(2900);
+    declare path_node_hash_id char(32);
+    declare path_hash_ids varchar(4096);
+    declare path_router_ids varchar(2048);
+    declare path_router_names varchar(4096);
     declare node_spf_iter int;
     declare node_metric int;
 
@@ -34,16 +38,30 @@ BEGIN
 
     declare loop_count int;
     declare no_more_rows tinyint default FALSE;
-    declare no_more_rows_loop1 tinyint default FALSE;
 
     declare path_cursor CURSOR FOR
-        SELECT p.node_hash_id,p.nh_node_hash_id,router_id,p.metric,p.spf_iter
-            FROM spf_path p JOIN ls_nodes n ON (p.node_hash_id = n.hash_id
-                            and n.peer_hash_id = peer_hash_id)
-            ORDER BY spf_iter asc;
+        SELECT p.node_hash_id,p.nh_node_hash_id,nn.igp_router_id,nn.hash_id,nn.name,
+            p.metric,p.spf_iter
+        FROM spf_path p JOIN ls_nodes n ON (p.node_hash_id = n.hash_id
+                                            and n.peer_hash_id = peer_hash_id)
+            JOIN (select router_id,concat(left(igp_router_id,14), '.0000') as igp_router_id,
+                      bgp_ls_id,hash_id,name
+                  -- FROM ls_nodes WHERE igp_router_id like '%.0000') nn
+                  FROM ls_nodes
+                    WHERE ls_nodes.peer_hash_id = peer_hash_id and igp_router_id like '%.0000') nn
+                ON (concat(left(n.igp_router_id, 14), '.0000') = nn.igp_router_id
+                    AND nn.bgp_ls_id = n.bgp_ls_id)
+        ORDER BY spf_iter asc;
+
+#     declare path_cursor CURSOR FOR
+#         SELECT p.node_hash_id,p.nh_node_hash_id,concat(left(igp_router_id,14), '.0000') as igp_router_id,
+#                     p.metric,p.spf_iter
+#             FROM spf_path p JOIN ls_nodes n ON (p.node_hash_id = n.hash_id
+#                             and n.peer_hash_id = peer_hash_id)
+#             ORDER BY spf_iter asc;
 
     declare nh_cursor CURSOR FOR
-        SELECT p.path_hash_ids,p.path_router_ids
+        SELECT p.path_hash_ids,p.path_router_ids,p.path_router_names
             FROM spf_path p WHERE p.node_hash_id = nh_node_hash_id
                 ORDER BY spf_iter,equal_iter asc;
 
@@ -63,9 +81,11 @@ BEGIN
             root_node_hash_id char(32) NOT NULL,
             nh_node_hash_id char(32),
             isis_type tinyint NOT NULL,
-            metric mediumint(10) not null,
+            metric int(10) unsigned not null,
             best bit(1) not null DEFAULT FALSE,
             path_router_ids varchar(2048) NOT NULL,
+            path_hash_ids varchar(4096) NOT NULL default '',
+            path_router_names varchar(4096) NOT NULL default '',
             equal_iter int NOT NULL default '0',
             peer_hash_id char(32) NOT NULL,
             mt_id int unsigned,
@@ -120,7 +140,7 @@ BEGIN
     create temporary table spf_vert (
         node_hash_id char(32) NOT NULL,
         nh_node_hash_id char(32) NOT NULL,
-        metric int(10) not null,
+        metric int(10) unsigned not null,
         spf_path_node tinyint not null default '0',
         PRIMARY KEY (node_hash_id,nh_node_hash_id)
     ) engine=memory DEFAULT CHARSET=latin1;
@@ -129,10 +149,11 @@ BEGIN
     create temporary table spf_path (
         node_hash_id char(32) NOT NULL,
         nh_node_hash_id char(32) NOT NULL,
-        metric int(10) not null,
+        metric int(10) unsigned not null,
         spf_iter int not null  default '9999',
-        path_hash_ids varchar(2900) NOT NULL default '',
-        path_router_ids varchar(2900) NOT NULL default '',
+        path_hash_ids varchar(4096) NOT NULL default '',
+        path_router_ids varchar(4096) NOT NULL default '',
+        path_router_names varchar(4096) NOT NULL default '',
         equal_iter int NOT NULL default '0',
         PRIMARY KEY (node_hash_id,nh_node_hash_id,equal_iter)
     ) engine=memory DEFAULT CHARSET=latin1;
@@ -248,14 +269,14 @@ BEGIN
     # LOOP the path table and add the path trace hash_ids and router_ids
     # --------------
 
-    # Loop throgh the spf path table starting from the root (lowest iteration)
+    # Loop through the spf path table starting from the root (lowest iteration)
     # The next hop for the current node should have already been processed
     set no_more_rows = FALSE;
     set done = FALSE;
 
     OPEN path_cursor;
     WHILE NOT done DO
-        FETCH path_cursor INTO node_hash_id,nh_node_hash_id,node_router_id,node_metric,node_spf_iter;
+        FETCH path_cursor INTO node_hash_id,nh_node_hash_id,node_router_id,path_node_hash_id,node_router_name,node_metric,node_spf_iter;
 
         IF no_more_rows THEN
             set no_more_rows = FALSE;
@@ -264,20 +285,25 @@ BEGIN
         ELSE
             set path_hash_ids = '';
             set path_router_ids = '';
+            set path_router_names = '';
 
             IF (node_hash_id = nh_node_hash_id) THEN
                 # ROOT NODE
-                UPDATE spf_path p SET p.path_hash_ids = node_hash_id,
-                        p.path_router_ids = node_router_id
-                    WHERE p.node_hash_id = node_hash_id and p.nh_node_hash_id = nh_node_hash_id;
+                UPDATE spf_path p SET
+                    p.path_hash_ids = path_node_hash_id,
+                    p.path_router_ids = node_router_id,
+                    p.path_router_names = node_router_name
+                WHERE p.node_hash_id = node_hash_id and
+                      p.nh_node_hash_id = nh_node_hash_id and equal_iter = 0;
 
+                set root_node_router_id = node_router_id;
             ELSE
                 OPEN nh_cursor;
                 set loop_count = 0;
 
                 ecmp_loop: LOOP
                     # Non ROOT node, need to merge next hop path info
-                    FETCH nh_cursor INTO path_hash_ids,path_router_ids;
+                    FETCH nh_cursor INTO path_hash_ids,path_router_ids,path_router_names;
 
                     IF no_more_rows THEN
                         set no_more_rows = FALSE;
@@ -285,34 +311,49 @@ BEGIN
                     END IF;
 
                     IF loop_count = 0 THEN
+                        # Update the table with the previous path_hash_ids/router_ids with the new one
+                        #    Pseudo nodes result in duplicates, so here we do not append/concat the
+                        #    path_node_hash_id/router_id again.
+                        IF path_hash_ids NOT LIKE concat('%,', path_node_hash_id) THEN
+                            UPDATE spf_path p
+                            SET p.path_hash_ids = concat(path_hash_ids,',',path_node_hash_id),
+                                p.path_router_ids = concat(path_router_ids,',', node_router_id),
+                                p.path_router_names = concat(path_router_names,',', node_router_name)
+                            WHERE p.node_hash_id = node_hash_id AND
+                                  p.nh_node_hash_id = nh_node_hash_id and equal_iter = 0;
 
-                        UPDATE spf_path p
-                            SET p.path_hash_ids =
-                                        concat(path_hash_ids,',',node_hash_id),
-                                p.path_router_ids =
-                                        concat(path_router_ids,',', node_router_id)
-                            WHERE p.node_hash_id = node_hash_id and
-                                p.nh_node_hash_id = nh_node_hash_id;
+                        ELSE
+                            # Update only, no append
+                            UPDATE spf_path p
+                            SET p.path_hash_ids = path_hash_ids,
+                                p.path_router_ids = path_router_ids,
+                                p.path_router_names = path_router_names
+                            WHERE p.node_hash_id = node_hash_id AND
+                                  p.nh_node_hash_id = nh_node_hash_id and equal_iter = 0;
+                        END IF;
                     ELSE
                         IF node_metric != 0 THEN
                             # Duplicate existing and add new path info
                             INSERT IGNORE INTO spf_path (node_hash_id,nh_node_hash_id,
-                                        path_router_ids,path_hash_ids,metric,spf_iter,equal_iter)
-                                    VALUES (node_hash_id,nh_node_hash_id,
-                                            concat(path_router_ids,',', node_router_id),
-                                            concat(path_hash_ids,',',node_hash_id),
-                                            node_metric,node_spf_iter,loop_count);
+                                                         path_router_ids,path_hash_ids,path_router_names,
+                                                         metric,spf_iter,equal_iter)
+                            VALUES (node_hash_id,nh_node_hash_id,
+                                    concat(path_router_ids,',', node_router_id),
+                                    concat(path_hash_ids,',',path_node_hash_id),
+                                    concat(path_router_names,',',node_router_name),
+                                    node_metric,node_spf_iter,loop_count);
                         END IF;
                     END IF;
 
                     set loop_count = loop_count + 1;
 
-               END LOOP ecmp_loop;
-               CLOSE nh_cursor;
+                END LOOP ecmp_loop;
+                CLOSE nh_cursor;
             END IF;
         END IF;
     END WHILE;
     CLOSE path_cursor;
+
 
     # ----------------------------
     # Perform best path selection
@@ -343,11 +384,12 @@ BEGIN
     # build the final IGP RIB table with direct neighbors identified
     set @sql_text = concat("
         REPLACE INTO ", igp_rib_table_name, " (prefix_bin,prefix_len,src_node_hash_id,
-                    isis_type,metric,best,path_router_ids,
+                    isis_type,metric,best,path_router_ids,path_router_names,path_hash_ids,
                     equal_iter,nh_node_hash_id,root_node_hash_id,peer_hash_id,mt_id)
             SELECT
                     inet6_aton(t.prefix),t.prefix_len,t.src_node_hash_id,t.isis_type,t.metric,
-                    t.best,p.path_router_ids,p.equal_iter,
+                    t.best,p.path_router_ids,p.path_router_names,p.path_hash_ids,
+                    p.equal_iter,
                     substring_index(substring_index(p.path_hash_ids,',', 2),',', -1), '",
                     root_node_hash_id, "','", peer_hash_id, "',",input_mt_id, "
                 FROM igp_rib t JOIN spf_path p ON (t.src_node_hash_id = p.node_hash_id);

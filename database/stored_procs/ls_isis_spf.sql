@@ -3,7 +3,7 @@
 #
 # IS-IS SPF MySQL stored procedure:
 #
-# Syntax: call ls_isis_spf(<peer hash id>, <root router id>,
+# Syntax: call ls_isis_spf(<peer hash id>, <root igp router id>,
 #                          <mt id>, <max table age in seconds>, @spf_iterations);
 #
 # Details:
@@ -27,9 +27,9 @@ BEGIN
     declare node_router_id char(46);
     declare nh_node_hash_id char(32);
     declare path_node_hash_id char(32);
-    declare nh_metric int default '0';
+    declare nh_metric int unsigned default '0';
     declare path_hash_ids varchar(4096);
-    declare path_router_ids varchar(2048);
+    declare path_router_ids varchar(4096);
     declare node_spf_iter int;
     declare node_metric int;
 
@@ -50,13 +50,16 @@ BEGIN
 
     -- # Recursive lookup pseudo node router id
     declare path_cursor CURSOR FOR
-        SELECT p.node_hash_id,p.nh_node_hash_id,nn.router_id,nn.hash_id,p.metric,p.spf_iter
+        SELECT p.node_hash_id,p.nh_node_hash_id,nn.igp_router_id,nn.hash_id,p.metric,p.spf_iter
             FROM spf_path p JOIN ls_nodes n ON (p.node_hash_id = n.hash_id
                             and n.peer_hash_id = peer_hash_id)
-              JOIN (select router_id,left(igp_router_id,14) as igp_router_id,hash_id
+               JOIN (select router_id,concat(left(igp_router_id,14), '.0000') as igp_router_id,
+                         hash_id,bgp_ls_id
                   -- FROM ls_nodes WHERE igp_router_id like '%.0000') nn
-                  FROM ls_nodes WHERE router_id != '0.0.0.0' and ls_nodes.peer_hash_id = peer_hash_id ) nn
-                        ON (left(n.igp_router_id, 14) = nn.igp_router_id)
+                  FROM ls_nodes
+                    WHERE ls_nodes.peer_hash_id = peer_hash_id and igp_router_id like '%.0000') nn
+                         ON (concat(left(n.igp_router_id, 14), '.0000') = nn.igp_router_id
+                             AND nn.bgp_ls_id = n.bgp_ls_id)
             ORDER BY spf_iter asc;
 
     declare nh_cursor CURSOR FOR
@@ -69,8 +72,11 @@ BEGIN
 
     # Get the node hash id from router ID
     SELECT hash_id INTO node_hash_id FROM ls_nodes
-            WHERE ls_nodes.peer_hash_id = peer_hash_id AND
-                router_id = root_router_id;
+            WHERE ls_nodes.peer_hash_id = peer_hash_id
+                AND iswithdrawn = False
+                AND igp_router_id = root_router_id
+            LIMIT 1;
+
 
     IF (node_hash_id is null) THEN
         SIGNAL SQLSTATE '45000'
@@ -89,7 +95,7 @@ BEGIN
             root_node_hash_id char(32),
             nh_node_hash_id char(32),
             isis_type tinyint NOT NULL,
-            metric int(10) not null,
+            metric int(10) unsigned not null,
             best tinyint not null DEFAULT FALSE,
             path_hash_ids varchar(4096) NOT NULL default '',
             path_router_ids varchar(2048) NOT NULL default '',
@@ -126,7 +132,7 @@ BEGIN
             prefix_len int(8) unsigned NOT NULL,
             src_node_hash_id char(32) NOT NULL,
             isis_type tinyint NOT NULL,
-            metric int(10) not null,
+            metric int(10) unsigned not null,
             best tinyint not null DEFAULT FALSE,
             PRIMARY KEY (src_node_hash_id,prefix,prefix_len),
             KEY idx_src_hash_id (src_node_hash_id)
@@ -137,7 +143,7 @@ BEGIN
         create temporary table spf_vert (
             node_hash_id char(32) NOT NULL,
             nh_node_hash_id char(32) NOT NULL,
-            metric int(10) not null,
+            metric int(10) unsigned not null,
             spf_path_node tinyint not null default '0',
             PRIMARY KEY (node_hash_id,nh_node_hash_id)
         ) engine=memory DEFAULT CHARSET=latin1;
@@ -147,10 +153,10 @@ BEGIN
         create temporary table spf_path (
             node_hash_id char(32) NOT NULL,
             nh_node_hash_id char(32) NOT NULL,
-            metric int(10) not null,
+            metric int(10) unsigned not null,
             spf_iter int not null  default '9999',
             path_hash_ids varchar(4096) NOT NULL default '',
-            path_router_ids varchar(2048) NOT NULL default '',
+            path_router_ids varchar(4096) NOT NULL default '',
             equal_iter int NOT NULL default '0',
             PRIMARY KEY (node_hash_id,nh_node_hash_id,equal_iter)
         ) engine=memory DEFAULT CHARSET=latin1;
@@ -160,7 +166,7 @@ BEGIN
         create temporary table igp_rib_best (
             prefix varchar(46) NOT NULL,
             prefix_len int(8) unsigned NOT NULL,
-            metric int(10) not null,
+            metric int(10) unsigned not null,
             PRIMARY KEY (prefix,prefix_len)
         ) engine=memory;
 
@@ -172,7 +178,7 @@ BEGIN
         set node_hash_id = root_node_hash_id;
         SET nh_node_hash_id = root_node_hash_id;
 
-        # Insert all posible prefixes for the rib, includes duplicates which will be removed based on spf
+        # Insert all possible prefixes for the rib, includes duplicates which will be removed based on spf
         INSERT IGNORE INTO igp_rib (prefix,prefix_len,src_node_hash_id,isis_type,metric)
              SELECT prefix,prefix_len,localn.hash_id,if (lp.protocol = 'IS-IS_L1', 1, 2),
                       metric
@@ -293,7 +299,7 @@ BEGIN
         # LOOP the path table and add the path trace hash_ids and router_ids
         # --------------
 
-        # Loop throgh the spf path table starting from the root (lowest iteration)
+        # Loop through the spf path table starting from the root (lowest iteration)
         # The next hop for the current node should have already been processed
         set no_more_rows = FALSE;
         set done = FALSE;

@@ -12,6 +12,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -116,6 +117,7 @@ public class MySQLWriterRunnable implements  Runnable {
                     logger.info("SQL exception state " + i + " : " + e.getSQLState());
                     logger.info("SQL exception: " + e.getMessage());
                 }
+
                 //e.printStackTrace();
 
                 if (!e.getMessage().contains("Broken pipe") && !e.getMessage().contains("Connection timed out") &&
@@ -151,7 +153,7 @@ public class MySQLWriterRunnable implements  Runnable {
          * bulk query map has a key of : <prefix|suffix>
          *      Prefix and suffix are from the query FIFO message.  Value is the VALUE to be inserted/updated/deleted
          */
-        Map<String, String> bulk_query = new HashMap<String, String>();
+        Map<String, String> bulk_query = new LinkedHashMap<String, String>();
 
         try {
             while (run) {
@@ -216,7 +218,7 @@ public class MySQLWriterRunnable implements  Runnable {
                             bulk_query.put(key, cur_query.get("value"));
                         }
 
-                        if (cur_query.get("value").length() > 100000) {
+                        if (cur_query.get("value").length() > 200000) {
                             bulk_count = MAX_BULK_STATEMENTS;
                             logger.debug("value length is: %d", cur_query.get("value").length());
                         }

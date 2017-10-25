@@ -67,7 +67,7 @@
     <log4j.version>2.7</log4j.version>
     <openbmp-api.version>0.1.0-SNAPSHOT</openbmp-api.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <kafka.version>0.10.0.1</kafka.version>
+    <kafka.version>0.10.2.0</kafka.version>
   </properties>
 </project>
 

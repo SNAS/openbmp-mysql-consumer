@@ -30,12 +30,32 @@ import java.util.concurrent.*;
  */
 public class MySQLConsumerRunnable implements Runnable {
     private final Integer SUBSCRIBE_INTERVAL_MILLI = 10000;  // topic subscription interval
-    private final Integer NUM_WRITER_THREADS = 3;            // The number of writers to run
+    private final Integer MAX_WRITERS_PER_TYPE = 3;          // Maximum number of writes per type
+    private final Integer ABOVE_QUEUE_THRESHOLD_COUNT = 2;   // Threshold to add threads when count is above this value
+    private final Long REMOVE_THREAD_AGE_MILLI = 1200000L;   // Age in milliseconds when threads can bedeleted
 
+    private enum ThreadType {
+        THREAD_DEFAULT(0),
+        THREAD_ATTRIBUTES(1),
+        THRAED_AS_PATH_ANALYSIS(2);
+
+        private final int value;
+
+        private ThreadType(int value) {
+            this.value = value;
+        }
+
+        public int getValue() {
+            return this.value;
+        }
+    }
+
+    private static final Logger logger = LogManager.getFormatterLogger(MySQLConsumerRunnable.class.getName());
     private Boolean running;
 
     private ExecutorService executor;
     private Long last_collector_msg_time;
+    private Long last_writer_thread_chg_time;
 
 
     private KafkaConsumer<String, String> consumer;
@@ -63,15 +83,20 @@ public class MySQLConsumerRunnable implements Runnable {
     private Collection<TopicPartition> pausedTopics;
     private long last_paused_time;
 
+    //List<MySQLWriterObject> writers;
+
     /*
+     * Writers thread map
+     *      Key = Type of thread
+     *      Value = List of writers
+     *
      * Each writer object has the following:
      *      Connection to MySQL
      *      FIFO msg queue
      *      Map of assigned record keys to the writer
      */
-    List<MySQLWriterObject> writers;
+    private final Map<ThreadType, List<MySQLWriterObject>> writer_thread_map;
 
-    private static final Logger logger = LogManager.getFormatterLogger(MySQLConsumerRunnable.class.getName());
 
     /**
      * Constructor
@@ -84,6 +109,9 @@ public class MySQLConsumerRunnable implements Runnable {
     public MySQLConsumerRunnable(Properties props, List<String> topics, Config cfg,
                                  Map<String,Map<String, Integer>> routerConMap) {
 
+
+        writer_thread_map = new HashMap<>();
+        last_writer_thread_chg_time = 0L;
 
         messageCount = BigInteger.valueOf(0);
         this.topics = topics;
@@ -107,17 +135,17 @@ public class MySQLConsumerRunnable implements Runnable {
         this.rebalanceListener = new ConsumerRebalanceListener(consumer);
 
         /*
-         * Start MySQL Writer thread - only one thread is needed
+         * Start MySQL Writer thread - one thread per type
          */
-        executor = Executors.newFixedThreadPool(NUM_WRITER_THREADS);
+        executor = Executors.newFixedThreadPool(MAX_WRITERS_PER_TYPE * ThreadType.values().length);
 
-        writers = new ArrayList<>();
-
-        for (int i=0; i < NUM_WRITER_THREADS; i++) {
+        // Init the list of threads for each thread type
+        for (ThreadType t: ThreadType.values()) {
             MySQLWriterObject obj = new MySQLWriterObject(cfg);
 
-            writers.add(obj);
+            writer_thread_map.put(t, new ArrayList<MySQLWriterObject>());
 
+            writer_thread_map.get(t).add(obj);
             executor.submit(obj.writerThread);
         }
     }
@@ -128,8 +156,12 @@ public class MySQLConsumerRunnable implements Runnable {
     public void shutdown() {
         logger.debug("MySQL consumer thread shutting down");
 
-        for (MySQLWriterObject obj: writers)
-            obj.writerThread.shutdown();
+        for (ThreadType t: ThreadType.values()) {
+            List<MySQLWriterObject> writers = writer_thread_map.get(t);
+            for (MySQLWriterObject obj: writers) {
+                obj.writerThread.shutdown();
+            }
+        }
 
         if (executor != null) executor.shutdown();
 
@@ -233,10 +265,13 @@ public class MySQLConsumerRunnable implements Runnable {
 
         logger.info("Consumer started");
 
-        for (MySQLWriterObject obj: writers) {
-            if (!obj.writerThread.isDbConnected()) {
-                logger.warn("Ignoring request to run thread since DB connection couldn't be established");
-                return;
+        for (ThreadType t: ThreadType.values()) {
+            List<MySQLWriterObject> writers = writer_thread_map.get(t);
+            for (MySQLWriterObject obj: writers) {
+                if (!obj.writerThread.isDbConnected()) {
+                    logger.warn("Ignoring request to run thread since DB connection couldn't be established");
+                    return;
+                }
             }
         }
 
@@ -291,6 +326,7 @@ public class MySQLConsumerRunnable implements Runnable {
                  */
                 pause();
 
+                ThreadType thread_type;
                 for (ConsumerRecord<String, String> record : records) {
                     messageCount = messageCount.add(BigInteger.ONE);
 
@@ -299,6 +335,7 @@ public class MySQLConsumerRunnable implements Runnable {
 
                     Base obj = null;
                     Query dbQuery = null;
+                    thread_type = ThreadType.THREAD_DEFAULT;
 
                     /*
                      * Parse the data based on topic
@@ -324,7 +361,7 @@ public class MySQLConsumerRunnable implements Runnable {
                             Map<String, String> router_update = new HashMap<>();
                             router_update.put("query", sql);
 
-                            sendToWriter(record.key(), router_update);
+                            sendToWriter(record.key(), router_update, ThreadType.THREAD_DEFAULT);
 
                         }
 
@@ -348,7 +385,7 @@ public class MySQLConsumerRunnable implements Runnable {
                             Map<String, String> peer_update = new HashMap<>();
                             peer_update.put("query", sql);
 
-                            sendToWriter(record.key(), peer_update);
+                            sendToWriter(record.key(), peer_update, ThreadType.THREAD_DEFAULT);
                         }
 
                     } else if (record.topic().equals("openbmp.parsed.peer")) {
@@ -367,11 +404,13 @@ public class MySQLConsumerRunnable implements Runnable {
                         rib_update.put("query", peerQuery.genRibPeerUpdate());
 
                         logger.debug("Processed peer %s / %s", peerQuery.genValuesStatement(), peerQuery.genRibPeerUpdate());
-                        sendToWriter(record.key(), rib_update);
+                        sendToWriter(record.key(), rib_update, ThreadType.THREAD_DEFAULT);
 
                     } else if (record.topic().equals("openbmp.parsed.base_attribute")) {
                         logger.trace("Parsing base_attribute message");
                         base_attribute_msg_count++;
+
+                        thread_type = ThreadType.THREAD_ATTRIBUTES;
 
                         BaseAttribute attr_obj = new BaseAttribute(message.getContent());
                         BaseAttributeQuery baseAttrQuery = new BaseAttributeQuery(attr_obj.getRowMap());
@@ -385,17 +424,23 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = new UnicastPrefix(message.getVersion(), message.getContent());
                         dbQuery = new UnicastPrefixQuery(obj.getRowMap());
 
-                        // Mark previous entries as withdrawn before update
-                        Map<String, String> withdraw_update = new HashMap<String, String>();
-                        withdraw_update.put("query",
-                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawUpdate());
+                        Map<String, String> update = new HashMap<String, String>();
+                        update.put("query", ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement()[0] +
+                                        ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement() + ")");
 
-                        sendToWriter(record.key(), withdraw_update);
+                        sendToWriter(record.key(),update, ThreadType.THRAED_AS_PATH_ANALYSIS);
+
+                        // Mark previous entries as withdrawn before update
+//                        addBulkQuerytoWriter(record.key(),
+//                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement(),
+//                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement(),
+//                                ThreadType.THRAED_AS_PATH_ANALYSIS);
 
                         // Add as_path_analysis entries
                         addBulkQuerytoWriter(record.key(),
                                 ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisStatement(),
-                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisValuesStatement());
+                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisValuesStatement(),
+                                ThreadType.THRAED_AS_PATH_ANALYSIS);
 
                     } else if (record.topic().equals("openbmp.parsed.l3vpn")) {
                         logger.trace("Parsing L3VPN prefix message");
@@ -442,25 +487,15 @@ public class MySQLConsumerRunnable implements Runnable {
                      */
                     if (obj != null) {
                         addBulkQuerytoWriter(record.key(), dbQuery.genInsertStatement(),
-                                             dbQuery.genValuesStatement());
+                                             dbQuery.genValuesStatement(), thread_type);
                     }
                 }
+
+                // Check writer threads
+                prev_time = checkWriterThreads(prev_time);
 
                 resume();
 
-                // Below is to check/monitor the writer queues - may move to debug only
-                if (System.currentTimeMillis() - prev_time > 10000) {
-
-                    for (int i = 0; i < NUM_WRITER_THREADS; i++) {
-                        if (writers.get(i).writerQueue.size() > 500) {
-                            logger.info("Writer %d thread: assigned = %d, queue = %d", i,
-                                        writers.get(i).assigned.size(),
-                                        writers.get(i).writerQueue.size());
-                        }
-                    }
-
-                    prev_time = System.currentTimeMillis();
-                }
 
             } catch (Exception ex) {
                 logger.warn("kafka consumer exception: ", ex);
@@ -476,40 +511,197 @@ public class MySQLConsumerRunnable implements Runnable {
         logger.debug("MySQL consumer thread finished");
     }
 
-    private void sendToWriter(String key, Map<String, String> query) {
-        MySQLWriterObject obj = writers.get(0);
-        boolean found = false;
+    private void addWriterThread(ThreadType thread_type) {
+        List<MySQLWriterObject> writers = writer_thread_map.get(thread_type);
 
-        if (!obj.assigned.containsKey(key)) {
-            // Choose writer by lowest number of assigned record keys
-            for (int i = 1; i < NUM_WRITER_THREADS; i++) {
-                if (writers.get(i).assigned.containsKey(key)) {
-                    obj = writers.get(i);
-                    found = true;
-                    break;
+        if (writers != null) {
+
+            logger.info("Adding new writer thread for type " + thread_type + ", draining queues");
+            // drain the current queues before being able to add a thread
+            for (MySQLWriterObject obj : writers) {
+                int i = 0;
+                while (obj.writerQueue.size() > 0) {
+                    if (i >= 500) {
+                        i = 0;
+                        consumer.poll(0);           // NOTE: consumer is paused already.
+                    }
+                    ++i;
+
+                    try {
+                        Thread.sleep(1);
+                    } catch (Exception ex) {
+                        break;
+                    }
+                }
+
+                obj.assigned.clear();
+            }
+
+            MySQLWriterObject obj = new MySQLWriterObject(cfg);
+            writers.add(obj);
+            executor.submit(obj.writerThread);
+
+            last_writer_thread_chg_time = System.currentTimeMillis();
+
+            logger.info("Done adding new writer thread for type " + thread_type);
+
+        }
+    }
+
+    private void delWriterThread(ThreadType thread_type) {
+
+        if ((System.currentTimeMillis() - last_writer_thread_chg_time) < REMOVE_THREAD_AGE_MILLI) {
+            return;
+        }
+
+        List<MySQLWriterObject> writers = writer_thread_map.get(thread_type);
+
+        if (writers != null && writers.size() > 1) {
+            last_writer_thread_chg_time = System.currentTimeMillis();
+
+            logger.info("Deleting writer thread for type = " + thread_type);
+            // drain the current queues before being able to add a thread
+            for (MySQLWriterObject obj : writers) {
+                int i = 0;
+                while (obj.writerQueue.size() > 0) {
+                    if (i >= 500) {
+                        i = 0;
+                        consumer.poll(0);           // NOTE: consumer is paused already.
+                    }
+                    ++i;
+
+                    try {
+                        Thread.sleep(1);
+                    } catch (Exception ex) {
+                        break;
+                    }
+                }
+
+                obj.assigned.clear();
+            }
+
+            writers.get(1).writerThread.shutdown();
+            writers.remove(1);
+        }
+
+    }
+
+    private long checkWriterThreads(long prev_time) {
+
+        if (System.currentTimeMillis() - prev_time > 10000) {
+
+            for (ThreadType t: ThreadType.values()) {
+                List<MySQLWriterObject> writers = writer_thread_map.get(t);
+                int i = 0;
+                for (MySQLWriterObject obj: writers) {
+
+                    if (obj.writerQueue.size() > 10000) {
+
+                        if (obj.above_count > ABOVE_QUEUE_THRESHOLD_COUNT) {
+
+                            if (writers.size() < MAX_WRITERS_PER_TYPE) {
+                                // Add new thread
+                                logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d : adding new thread",
+                                        t.toString(), i,
+                                        obj.assigned.size(),
+                                        obj.writerQueue.size(),
+                                        obj.above_count,
+                                        writers.size());
+
+                                obj.above_count = 0;
+
+                                addWriterThread(t);
+                                break;
+
+                            } else {
+                                // At max threads
+                                //obj.above_count++;
+
+                                logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d, running max threads",
+                                        t.toString(), i,
+                                        obj.assigned.size(),
+                                        obj.writerQueue.size(),
+                                        obj.above_count,
+                                        writers.size());
+                            }
+                        } else {
+                            obj.above_count++;
+
+                            // under above threshold
+                            logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d",
+                                    t.toString(), i,
+                                    obj.assigned.size(),
+                                    obj.writerQueue.size(),
+                                    obj.above_count,
+                                    writers.size());
+                        }
+
+                    } else if (obj.writerQueue.size() < 100){
+                        obj.above_count = 0;
+                        delWriterThread(t);
+                        break;
+                    }
+
+                    i++;
+                }
+            }
+
+            return System.currentTimeMillis();
+        }
+        else {
+            return prev_time;
+        }
+    }
+
+    private void sendToWriter(String key, Map<String, String> query, ThreadType thread_type) {
+        List<MySQLWriterObject> writers = writer_thread_map.get(thread_type);
+
+        if (writers != null) {
+            boolean newly_assigned = true;
+
+            MySQLWriterObject found_obj= null;
+
+            for (MySQLWriterObject obj: writers) {
+                if (!obj.assigned.containsKey(key)) {
+                    if (found_obj == null) {
+                        found_obj = obj;
+                    }
+                    else if ((found_obj.writerQueue.size() > obj.writerQueue.size()
+                            && obj.writerQueue.size() < 2000)
+                            || (found_obj.assigned.size() > obj.assigned.size())) {
+                        found_obj = obj;
+                    }
                 }
                 else {
-                    if (obj.assigned.size() > writers.get(i).assigned.size())
-                        obj = writers.get(i);
+                    newly_assigned = false;
+                    found_obj = obj;
+                    break;
+                }
+
+
+            }
+
+            if (newly_assigned) {
+                found_obj.assigned.put(key, 1);
+            }
+
+            int i = 0;
+            while (found_obj.writerQueue.offer(query) == false) {
+                if (i >= 500) {
+                    i = 0;
+                    consumer.poll(0);           // NOTE: consumer is paused already.
+                }
+                ++i;
+
+                try {
+                    Thread.sleep(1);
+                } catch (Exception ex) {
+                    break;
                 }
             }
-        } else {
-            found = true;
+
         }
 
-        if (! found) {
-            obj.assigned.put(key, 1);
-        }
-
-        while (obj.writerQueue.offer(query) == false) {
-
-            consumer.poll(1);
-            try {
-                Thread.sleep(5);
-            } catch (Exception ex) {
-                break;
-            }
-        }
     }
 
     /**
@@ -520,8 +712,9 @@ public class MySQLConsumerRunnable implements Runnable {
      * @param key           Message key in kafka, such as the hash id
      * @param statement     String array statement from Query.getInsertStatement()
      * @param values        Values string from Query.getValuesStatement()
+     * @param thread_type   Type of thread to use
      */
-    private void addBulkQuerytoWriter(String key, String [] statement, String values) {
+    private void addBulkQuerytoWriter(String key, String [] statement, String values, ThreadType thread_type) {
         Map<String, String> query = new HashMap<>();
 
         try {
@@ -532,7 +725,7 @@ public class MySQLConsumerRunnable implements Runnable {
                 query.put("value", values);
 
                 // block if space is not available
-                sendToWriter(key, query);
+                sendToWriter(key, query, thread_type);
             }
         } catch (Exception ex) {
             logger.info("Get values Exception: ", ex);
@@ -580,8 +773,13 @@ public class MySQLConsumerRunnable implements Runnable {
     public synchronized Integer getQueueSize() {
         Integer qSize = 0;
 
-        for (MySQLWriterObject obj: writers) {
-            qSize += obj.writerQueue.size();
+        for (ThreadType t: ThreadType.values()) {
+            List<MySQLWriterObject> writers = writer_thread_map.get(t);
+            int i = 0;
+            for (MySQLWriterObject obj: writers) {
+                qSize += obj.writerQueue.size();
+                i++;
+            }
         }
 
         return qSize;

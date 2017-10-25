@@ -2,7 +2,7 @@
 
 MYSQL_CMD="mysql -u root --password="${MYSQL_ROOT_PASSWORD}" -h 127.0.0.1 openBMP"
 
-CUR_VERSION="1.20"
+CUR_VERSION="1.21"
 
 if [[ -f /data/mysql/schema-version ]]; then
     source /data/mysql/schema-version
@@ -11,14 +11,13 @@ else
 fi
 
 # --------------------------------------------------------------
-# Version 1.19 to current version
+# Version 1.20 to current version
 # --------------------------------------------------------------
 
-if [[ $SCHEMA_VERSION = "1.19" ]]; then
+if [[ $SCHEMA_VERSION = "1.20" ]]; then
 
-echo "Upgrading from 1.19 to $CUR_VERSION"
+echo "Upgrading from 1.20 to $CUR_VERSION"
 $MYSQL_CMD <<UPGRADE
-  DROP trigger IF EXISTS upd_as_path_analysis;
 
 DROP TABLE IF EXISTS as_path_analysis;
 CREATE TABLE as_path_analysis (
@@ -31,17 +30,58 @@ CREATE TABLE as_path_analysis (
   isIPv4 bit(1) NOT NULL DEFAULT b'1',
   isWithdrawn bit(1) NOT NULL DEFAULT b'0',
   timestamp datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
-  PRIMARY KEY (asn,asn_left,asn_right,rib_hash_id),
+  PRIMARY KEY (rib_hash_id,asn),
   KEY idx_asn_left (asn_left),
   KEY idx_asn_right (asn_right),
   KEY idx_prefix_full (prefix_bin,prefix_len),
-  KEY idx_rib_hash_id (rib_hash_id),
-  KEY idx_withdrawn (isWithdrawn)
+  KEY idx_withdrawn (isWithdrawn),
+  KEY idx_asn (asn),
+  KEY idx_ts (timestamp)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
-    PARTITION BY KEY (asn)
+    PARTITION BY KEY (rib_hash_id)
+    PARTITIONS 48;
+
+    alter table gen_asn_stats add index idx_ts (timestamp);
+
+UPGRADE
+
+
+# --------------------------------------------------------------
+# Version 1.19 to current version
+# --------------------------------------------------------------
+
+elif [[ $SCHEMA_VERSION = "1.19" ]]; then
+
+echo "Upgrading from 1.19 to $CUR_VERSION"
+$MYSQL_CMD <<UPGRADE
+  DROP trigger IF EXISTS upd_as_path_analysis;
+
+
+DROP TABLE IF EXISTS as_path_analysis;
+CREATE TABLE as_path_analysis (
+  asn int(10) unsigned NOT NULL,
+  asn_left int(10) unsigned NOT NULL DEFAULT 0,
+  asn_right int(10) unsigned NOT NULL DEFAULT 0,
+  rib_hash_id char(32) NOT NULL,
+  prefix_len int(10) unsigned NOT NULL,
+  prefix_bin varbinary(16) NOT NULL,
+  isIPv4 bit(1) NOT NULL DEFAULT b'1',
+  isWithdrawn bit(1) NOT NULL DEFAULT b'0',
+  timestamp datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
+  PRIMARY KEY (rib_hash_id,asn),
+  KEY idx_asn_left (asn_left),
+  KEY idx_asn_right (asn_right),
+  KEY idx_prefix_full (prefix_bin,prefix_len),
+  KEY idx_withdrawn (isWithdrawn),
+  KEY idx_asn (asn),
+  KEY idx_ts (timestamp)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+    PARTITION BY KEY (rib_hash_id)
     PARTITIONS 48;
 
   ALTER TABLE gen_chg_stats_byprefix ROW_FORMAT=compressed KEY_BLOCK_SIZE=4;
+
+  alter table withdrawn_log add index idx_origin (origin_as);
 UPGRADE
 
 # --------------------------------------------------------------
@@ -153,15 +193,17 @@ CREATE TABLE as_path_analysis (
   isIPv4 bit(1) NOT NULL DEFAULT b'1',
   isWithdrawn bit(1) NOT NULL DEFAULT b'0',
   timestamp datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
-  PRIMARY KEY (asn,asn_left,asn_right,rib_hash_id),
+  PRIMARY KEY (rib_hash_id,asn),
   KEY idx_asn_left (asn_left),
   KEY idx_asn_right (asn_right),
   KEY idx_prefix_full (prefix_bin,prefix_len),
-  KEY idx_rib_hash_id (rib_hash_id),
-  KEY idx_withdrawn (isWithdrawn)
+  KEY idx_withdrawn (isWithdrawn),
+  KEY idx_asn (asn),
+  KEY idx_ts (timestamp)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
-    PARTITION BY KEY (asn)
+    PARTITION BY KEY (rib_hash_id)
     PARTITIONS 48;
+
 
   ALTER TABLE gen_chg_stats_byprefix ROW_FORMAT=compressed KEY_BLOCK_SIZE=4;
 
@@ -208,14 +250,15 @@ CREATE TABLE as_path_analysis (
   isIPv4 bit(1) NOT NULL DEFAULT b'1',
   isWithdrawn bit(1) NOT NULL DEFAULT b'0',
   timestamp datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
-  PRIMARY KEY (asn,asn_left,asn_right,rib_hash_id),
+  PRIMARY KEY (rib_hash_id,asn),
   KEY idx_asn_left (asn_left),
   KEY idx_asn_right (asn_right),
   KEY idx_prefix_full (prefix_bin,prefix_len),
-  KEY idx_rib_hash_id (rib_hash_id),
-  KEY idx_withdrawn (isWithdrawn)
+  KEY idx_withdrawn (isWithdrawn),
+  KEY idx_asn (asn),
+  KEY idx_ts (timestamp)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
-    PARTITION BY KEY (asn)
+    PARTITION BY KEY (rib_hash_id)
     PARTITIONS 48;
 
 DROP trigger IF EXISTS upd_as_path_analysis;

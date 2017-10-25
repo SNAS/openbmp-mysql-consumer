@@ -23,12 +23,22 @@ public class LsPrefixQuery extends Query{
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genInsertStatement() {
-        String [] stmt = { " REPLACE INTO ls_prefixes (hash_id,peer_hash_id, path_attr_hash_id,id,local_node_hash_id," +
+        String [] stmt = { " INSERT IGNORE INTO ls_prefixes (hash_id,peer_hash_id, path_attr_hash_id,id,local_node_hash_id," +
                            "mt_id,protocol,prefix,prefix_len,prefix_bin,prefix_bcast_bin,ospf_route_type," +
                            "igp_flags,isIPv4,route_tag,ext_route_tag,metric,ospf_fwd_addr,isWithdrawn,timestamp," +
 						   "sr_prefix_sids) VALUES ",
 
-                           " " };
+							"  ON DUPLICATE KEY UPDATE " +
+									"iswithdrawn=values(iswithdrawn)," +
+									"path_attr_hash_id=if(values(iswithdrawn), path_attr_hash_id, values(path_attr_hash_id))," +
+									"ospf_route_type=if(values(iswithdrawn), ospf_route_type, values(ospf_route_type))," +
+									"igp_flags=if(values(iswithdrawn), igp_flags, values(igp_flags))," +
+									"route_tag=if(values(iswithdrawn), route_tag, values(route_tag))," +
+									"ext_route_tag=if(values(iswithdrawn), ext_route_tag, values(ext_route_tag))," +
+									"ospf_fwd_addr=if(values(iswithdrawn), ospf_fwd_addr, values(ospf_fwd_addr))," +
+									"metric=if(values(iswithdrawn), metric, values(metric))," +
+									"sr_prefix_sids=if(values(iswithdrawn), sr_prefix_sids, values(sr_prefix_sids))"
+        };
         return stmt;
     }
 

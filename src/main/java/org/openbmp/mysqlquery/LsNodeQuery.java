@@ -23,11 +23,24 @@ public class LsNodeQuery extends Query{
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genInsertStatement() {
-        String [] stmt = { " REPLACE  INTO ls_nodes (hash_id,peer_hash_id, path_attr_hash_id,asn,id,bgp_ls_id,igp_router_id," +
+        String [] stmt = { " INSERT IGNORE  INTO ls_nodes (hash_id,peer_hash_id, path_attr_hash_id,asn,id,bgp_ls_id,igp_router_id," +
                            "ospf_area_id,protocol,router_id,isis_area_id,flags,name,mt_ids,isWithdrawn,timestamp," +
                             "sr_capabilities) VALUES ",
 
-                           " " };
+                           "  ON DUPLICATE KEY UPDATE " +
+                                  "iswithdrawn=values(iswithdrawn)," +
+                                  "path_attr_hash_id=if(values(iswithdrawn), path_attr_hash_id, values(path_attr_hash_id))," +
+                                  "asn=if(values(iswithdrawn), asn, values(asn))," +
+                                  "igp_router_id=if(values(iswithdrawn), igp_router_id, values(igp_router_id))," +
+                                  "ospf_area_id=if(values(iswithdrawn), ospf_area_id, values(ospf_area_id))," +
+                                  "router_id=if(values(iswithdrawn), router_id, values(router_id))," +
+                                  "isis_area_id=if(values(iswithdrawn), isis_area_id, values(isis_area_id))," +
+                                  "flags=if(values(iswithdrawn), flags, values(flags))," +
+                                  "name=if(values(iswithdrawn), name, values(name))," +
+                                  "mt_ids=if(values(iswithdrawn), mt_ids, values(mt_ids))," +
+                                  "sr_capabilities=if(values(iswithdrawn), sr_capabilities, values(sr_capabilities))"
+
+        };
         return stmt;
     }
 
