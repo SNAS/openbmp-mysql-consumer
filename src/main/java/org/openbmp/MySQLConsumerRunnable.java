@@ -172,11 +172,11 @@ public class MySQLConsumerRunnable implements Runnable {
             logger.warn("Interrupted during shutdown, exiting uncleanly");
         }
 
-        close_consumer();
-
         synchronized (running) {
             running = false;
         }
+
+        close_consumer();
     }
 
     private void close_consumer() {
@@ -279,7 +279,9 @@ public class MySQLConsumerRunnable implements Runnable {
         } else {
             logger.debug("Conected and now consuming messages from kafka");
 
-            running = true;
+            synchronized (running) {
+                running = true;
+            }
         }
 
 
@@ -290,19 +292,21 @@ public class MySQLConsumerRunnable implements Runnable {
         long prev_time = System.currentTimeMillis();
         long subscribe_prev_timestamp = 0L;
 
-        while (true) {
+        while (running) {
 
-            if (running == false) {
-                try {
-                    Thread.sleep(1000);
-
-                } catch (InterruptedException e) {
-                    break;
-                }
-
-                running = connect();
-                continue;
-            }
+//            if (running == false) {
+//                try {
+//                    Thread.sleep(1000);
+//
+//                } catch (InterruptedException e) {
+//                    break;
+//                }
+//
+//                consumer.wakeup();
+//
+//                //running = connect();
+//                continue;
+//            }
 
             // Subscribe to topics if needed
             if (! topics_all_subscribed) {

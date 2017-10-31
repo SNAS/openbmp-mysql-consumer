@@ -286,6 +286,7 @@ public class Config {
         kafka_consumer_props.setProperty("group.id", "openbmp-mysql-consumer");
         kafka_consumer_props.setProperty("client.id", "openbmp-mysql-consumer");
         kafka_consumer_props.setProperty("session.timeout.ms", "16000");
+        kafka_consumer_props.setProperty("max.poll.interval.ms", "16000");
         kafka_consumer_props.setProperty("max.partition.fetch.bytes", "2000000");
         kafka_consumer_props.setProperty("heartbeat.interval.ms", "10000");
         kafka_consumer_props.setProperty("max.poll.records", "2000");
