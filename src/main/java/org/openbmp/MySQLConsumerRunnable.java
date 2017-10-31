@@ -22,6 +22,7 @@ import org.openbmp.mysqlquery.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Pattern;
 
 /**
  * MySQL Consumer class
@@ -29,10 +30,6 @@ import java.util.concurrent.*;
  *   A thread to process a topic partition.  Supports all openbmp.parsed.* topics.
  */
 public class MySQLConsumerRunnable implements Runnable {
-    private final Integer SUBSCRIBE_INTERVAL_MILLI = 10000;  // topic subscription interval
-    private final Integer MAX_WRITERS_PER_TYPE = 3;          // Maximum number of writes per type
-    private final Integer ABOVE_QUEUE_THRESHOLD_COUNT = 2;   // Threshold to add threads when count is above this value
-    private final Long REMOVE_THREAD_AGE_MILLI = 1200000L;   // Age in milliseconds when threads can bedeleted
 
     private enum ThreadType {
         THREAD_DEFAULT(0),
@@ -60,13 +57,13 @@ public class MySQLConsumerRunnable implements Runnable {
 
     private KafkaConsumer<String, String> consumer;
     private ConsumerRebalanceListener rebalanceListener;
-    private Properties props;
-    private List<String> topics;
     private Config cfg;
     private Map<String,Map<String, Integer>> routerConMap;
 
     private int topics_subscribed_count;
     private boolean topics_all_subscribed;
+    private List<Pattern> topic_patterns;
+    private StringBuilder topic_regex_pattern;
 
     private BigInteger messageCount;
     private long collector_msg_count;
@@ -82,8 +79,6 @@ public class MySQLConsumerRunnable implements Runnable {
 
     private Collection<TopicPartition> pausedTopics;
     private long last_paused_time;
-
-    //List<MySQLWriterObject> writers;
 
     /*
      * Writers thread map
@@ -101,12 +96,10 @@ public class MySQLConsumerRunnable implements Runnable {
     /**
      * Constructor
      *
-     * @param props                Kafka properties/configuration
-     * @param topics               Topics to subscribe to
      * @param cfg                  Configuration from cli/config file
      * @param routerConMap         Persistent router state tracking
      */
-    public MySQLConsumerRunnable(Properties props, List<String> topics, Config cfg,
+    public MySQLConsumerRunnable(Config cfg,
                                  Map<String,Map<String, Integer>> routerConMap) {
 
 
@@ -114,12 +107,10 @@ public class MySQLConsumerRunnable implements Runnable {
         last_writer_thread_chg_time = 0L;
 
         messageCount = BigInteger.valueOf(0);
-        this.topics = topics;
-        this.props = props;
         this.cfg = cfg;
         this.routerConMap = routerConMap;
 
-        this.running = false;
+        this.running = true;
 
         pausedTopics = new HashSet<>();
         last_paused_time = 0L;
@@ -131,13 +122,21 @@ public class MySQLConsumerRunnable implements Runnable {
          */
         this.topics_subscribed_count = 0;
         this.topics_all_subscribed = false;
+        this.topic_patterns = new LinkedList<>();
+
+        // Convert to list so that we can access items by index.
+        for (Iterator<Pattern> it = cfg.getKafka_topic_patterns().iterator(); it.hasNext(); ) {
+            this.topic_patterns.add(it.next());
+        }
+
+        this.topic_regex_pattern = new StringBuilder();
 
         this.rebalanceListener = new ConsumerRebalanceListener(consumer);
 
         /*
          * Start MySQL Writer thread - one thread per type
          */
-        executor = Executors.newFixedThreadPool(MAX_WRITERS_PER_TYPE * ThreadType.values().length);
+        executor = Executors.newFixedThreadPool(cfg.getWriter_max_threads_per_type() * ThreadType.values().length);
 
         // Init the list of threads for each thread type
         for (ThreadType t: ThreadType.values()) {
@@ -199,17 +198,11 @@ public class MySQLConsumerRunnable implements Runnable {
         try {
             close_consumer();
 
-            consumer = new KafkaConsumer<>(this.props);
+            consumer = new KafkaConsumer<>(cfg.getKafka_consumer_props());
             logger.info("Connected to kafka, subscribing to topics");
 
             org.apache.kafka.clients.consumer.ConsumerRebalanceListener rebalanceListener =
                     new ConsumerRebalanceListener(consumer);
-
-//                consumer.subscribe(topics, rebalanceListener);
-//
-//                for (String topic : topics) {
-//                    logger.info("Subscribed to topic: %s", topic);
-//                }
 
             status = true;
 
@@ -277,9 +270,15 @@ public class MySQLConsumerRunnable implements Runnable {
 
         if (connect() == false) {
             logger.error("Failed to connect to Kafka, consumer exiting");
-            running = false;
+
+            synchronized (running) {
+                running = false;
+            }
+
+            return;
         } else {
             logger.debug("Conected and now consuming messages from kafka");
+
             running = true;
         }
 
@@ -341,7 +340,7 @@ public class MySQLConsumerRunnable implements Runnable {
                      * Parse the data based on topic
                      */
                     query = new HashMap<String, String>();
-                    if (record.topic().equals("openbmp.parsed.collector")) {
+                    if (message.getType().equalsIgnoreCase("collector") || record.topic().equals("openbmp.parsed.collector")) {
                         logger.trace("Parsing collector message");
                         collector_msg_count++;
 
@@ -365,7 +364,7 @@ public class MySQLConsumerRunnable implements Runnable {
 
                         }
 
-                    } else if (record.topic().equals("openbmp.parsed.router")) {
+                    } else if (message.getType().equalsIgnoreCase("router") || record.topic().equals("openbmp.parsed.router")) {
                         logger.trace("Parsing router message");
                         router_msg_count++;
 
@@ -388,7 +387,7 @@ public class MySQLConsumerRunnable implements Runnable {
                             sendToWriter(record.key(), peer_update, ThreadType.THREAD_DEFAULT);
                         }
 
-                    } else if (record.topic().equals("openbmp.parsed.peer")) {
+                    } else if (message.getType().equalsIgnoreCase("peer") || record.topic().equals("openbmp.parsed.peer")) {
                         logger.trace("Parsing peer message");
                         peer_msg_count++;
 
@@ -406,7 +405,7 @@ public class MySQLConsumerRunnable implements Runnable {
                         logger.debug("Processed peer %s / %s", peerQuery.genValuesStatement(), peerQuery.genRibPeerUpdate());
                         sendToWriter(record.key(), rib_update, ThreadType.THREAD_DEFAULT);
 
-                    } else if (record.topic().equals("openbmp.parsed.base_attribute")) {
+                    } else if (message.getType().equalsIgnoreCase("base_attribute") || record.topic().equals("openbmp.parsed.base_attribute")) {
                         logger.trace("Parsing base_attribute message");
                         base_attribute_msg_count++;
 
@@ -417,60 +416,63 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = attr_obj;
                         dbQuery = baseAttrQuery;
 
-                    } else if (record.topic().equals("openbmp.parsed.unicast_prefix")) {
+                    } else if (message.getType().equalsIgnoreCase("unicast_prefix") || record.topic().equals("openbmp.parsed.unicast_prefix")) {
                         logger.trace("Parsing unicast_prefix message");
                         unicast_prefix_msg_count++;
 
                         obj = new UnicastPrefix(message.getVersion(), message.getContent());
                         dbQuery = new UnicastPrefixQuery(obj.getRowMap());
 
-                        Map<String, String> update = new HashMap<String, String>();
-                        update.put("query", ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement()[0] +
-                                        ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement() + ")");
+                        if (cfg.getDisable_as_path_indexing() == false) {
 
-                        sendToWriter(record.key(),update, ThreadType.THRAED_AS_PATH_ANALYSIS);
+                            Map<String, String> update = new HashMap<String, String>();
+                            update.put("query", ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement()[0] +
+                                            ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement() + ")");
 
-                        // Mark previous entries as withdrawn before update
-//                        addBulkQuerytoWriter(record.key(),
-//                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement(),
-//                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement(),
-//                                ThreadType.THRAED_AS_PATH_ANALYSIS);
+                            sendToWriter(record.key(),update, ThreadType.THRAED_AS_PATH_ANALYSIS);
 
-                        // Add as_path_analysis entries
-                        addBulkQuerytoWriter(record.key(),
-                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisStatement(),
-                                ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisValuesStatement(),
-                                ThreadType.THRAED_AS_PATH_ANALYSIS);
+//                            // Mark previous entries as withdrawn before update
+//                            addBulkQuerytoWriter(record.key(),
+//                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisWithdrawStatement(),
+//                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisWithdrawValuesStatement(),
+//                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
 
-                    } else if (record.topic().equals("openbmp.parsed.l3vpn")) {
+                            // Add as_path_analysis entries
+                            addBulkQuerytoWriter(record.key(),
+                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisStatement(),
+                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisValuesStatement(),
+                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
+                        }
+
+                    } else if (message.getType().equalsIgnoreCase("l3vpn") ||record.topic().equals("openbmp.parsed.l3vpn")) {
                         logger.trace("Parsing L3VPN prefix message");
                         l3vpn_prefix_msg_count++;
 
                         obj = new L3VpnPrefix(message.getVersion(), message.getContent());
                         dbQuery = new L3VpnPrefixQuery(obj.getRowMap());
 
-                    } else if (record.topic().equals("openbmp.parsed.bmp_stat")) {
+                    } else if (message.getType().equalsIgnoreCase("bmp_stat") || record.topic().equals("openbmp.parsed.bmp_stat")) {
                         logger.trace("Parsing bmp_stat message");
                         stat_msg_count++;
 
                         obj = new BmpStat(message.getContent());
                         dbQuery = new BmpStatQuery(obj.getRowMap());
 
-                    } else if (record.topic().equals("openbmp.parsed.ls_node")) {
+                    } else if (message.getType().equalsIgnoreCase("ls_node") || record.topic().equals("openbmp.parsed.ls_node")) {
                         logger.trace("Parsing ls_node message");
                         ls_node_msg_count++;
 
                         obj = new LsNode(message.getVersion(), message.getContent());
                         dbQuery = new LsNodeQuery(obj.getRowMap());
 
-                    } else if (record.topic().equals("openbmp.parsed.ls_link")) {
+                    } else if (message.getType().equalsIgnoreCase("ls_link") || record.topic().equals("openbmp.parsed.ls_link")) {
                         logger.trace("Parsing ls_link message");
                         ls_link_msg_count++;
 
                         obj = new LsLink(message.getVersion(), message.getContent());
                         dbQuery = new LsLinkQuery(obj.getRowMap());
 
-                    } else if (record.topic().equals("openbmp.parsed.ls_prefix")) {
+                    } else if (message.getType().equalsIgnoreCase("ls_prefix") || record.topic().equals("openbmp.parsed.ls_prefix")) {
                         logger.trace("Parsing ls_prefix message");
                         ls_prefix_msg_count++;
 
@@ -511,13 +513,12 @@ public class MySQLConsumerRunnable implements Runnable {
         logger.debug("MySQL consumer thread finished");
     }
 
-    private void addWriterThread(ThreadType thread_type) {
+    private void resetWriters(ThreadType thread_type) {
         List<MySQLWriterObject> writers = writer_thread_map.get(thread_type);
 
         if (writers != null) {
 
-            logger.info("Adding new writer thread for type " + thread_type + ", draining queues");
-            // drain the current queues before being able to add a thread
+            logger.info("Thread type " + thread_type + ", draining queues to reset writers");
             for (MySQLWriterObject obj : writers) {
                 int i = 0;
                 while (obj.writerQueue.size() > 0) {
@@ -536,6 +537,15 @@ public class MySQLConsumerRunnable implements Runnable {
 
                 obj.assigned.clear();
             }
+        }
+    }
+
+    private void addWriterThread(ThreadType thread_type) {
+        List<MySQLWriterObject> writers = writer_thread_map.get(thread_type);
+
+        if (writers != null) {
+            logger.info("Adding new writer thread for type " + thread_type);
+            resetWriters(thread_type);
 
             MySQLWriterObject obj = new MySQLWriterObject(cfg);
             writers.add(obj);
@@ -550,7 +560,7 @@ public class MySQLConsumerRunnable implements Runnable {
 
     private void delWriterThread(ThreadType thread_type) {
 
-        if ((System.currentTimeMillis() - last_writer_thread_chg_time) < REMOVE_THREAD_AGE_MILLI) {
+        if ((System.currentTimeMillis() - last_writer_thread_chg_time) < cfg.getWriter_millis_thread_scale_back()) {
             return;
         }
 
@@ -560,28 +570,13 @@ public class MySQLConsumerRunnable implements Runnable {
             last_writer_thread_chg_time = System.currentTimeMillis();
 
             logger.info("Deleting writer thread for type = " + thread_type);
-            // drain the current queues before being able to add a thread
-            for (MySQLWriterObject obj : writers) {
-                int i = 0;
-                while (obj.writerQueue.size() > 0) {
-                    if (i >= 500) {
-                        i = 0;
-                        consumer.poll(0);           // NOTE: consumer is paused already.
-                    }
-                    ++i;
-
-                    try {
-                        Thread.sleep(1);
-                    } catch (Exception ex) {
-                        break;
-                    }
-                }
-
-                obj.assigned.clear();
-            }
+            resetWriters(thread_type);
 
             writers.get(1).writerThread.shutdown();
             writers.remove(1);
+
+            logger.info("Done deleting writer thread for type = " + thread_type);
+
         }
 
     }
@@ -597,9 +592,9 @@ public class MySQLConsumerRunnable implements Runnable {
 
                     if (obj.writerQueue.size() > 10000) {
 
-                        if (obj.above_count > ABOVE_QUEUE_THRESHOLD_COUNT) {
+                        if (obj.above_count > cfg.getWriter_allowed_over_queue_times()) {
 
-                            if (writers.size() < MAX_WRITERS_PER_TYPE) {
+                            if (writers.size() < cfg.getWriter_max_threads_per_type()) {
                                 // Add new thread
                                 logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d : adding new thread",
                                         t.toString(), i,
@@ -743,19 +738,23 @@ public class MySQLConsumerRunnable implements Runnable {
     private long subscribe_topics(long prev_timestamp) {
         long sub_timestamp = prev_timestamp;
 
-        if (topics_subscribed_count < topics.size()) {
+        if (topics_subscribed_count < topic_patterns.size()) {
 
-            if ((System.currentTimeMillis() - prev_timestamp) >= SUBSCRIBE_INTERVAL_MILLI) {
-                List<String> subTopics = new ArrayList<>();
-
-                for (int i=0; i <= topics_subscribed_count; i++) {
-                    subTopics.add(topics.get(i));
-                }
+            if ((System.currentTimeMillis() - prev_timestamp) >= cfg.getTopic_subscribe_delay_millis()) {
 
                 consumer.commitSync();
-                consumer.subscribe(subTopics, rebalanceListener);
 
-                logger.info("Subscribed to topic: %s", topics.get(topics_subscribed_count));
+                if (topics_subscribed_count > 0)
+                    topic_regex_pattern.append('|');
+
+                topic_regex_pattern.append('(');
+                topic_regex_pattern.append(topic_patterns.get(topics_subscribed_count));
+                topic_regex_pattern.append(')');
+
+                consumer.subscribe(Pattern.compile(topic_regex_pattern.toString()), rebalanceListener);
+
+                logger.info("Subscribed to topic: %s", topic_patterns.get(topics_subscribed_count).pattern());
+                logger.debug("Topics regex pattern: %s", topic_regex_pattern.toString());
 
                 topics_subscribed_count++;
 

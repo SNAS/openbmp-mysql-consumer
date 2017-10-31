@@ -1,0 +1,105 @@
+# Openbmp MySQL consumer configuration
+
+base:
+
+  # Interval at which the customer statistics should be printed/logged
+  stats_interval: 300
+
+
+  # In minutes; The maximum age between received collector heartbeats.
+  #     The collector sends heatbeat messages every interval.  This
+  #     is how the collector is detected as being up or down.  This max
+  #     age is the maximum allowed time before declaring the collector down.
+  heartbeat_max_age: 6
+
+  # Number of writer threads per processing type.
+  #     The number of threads and mysql connections are
+  #     [types * writer_max_threads_per_type]. Each writer makes
+  #     a connection to MySQL in order to execute SQL statements in parallel.
+  #     The number of threads are auto-scaled up and down based on partition
+  #     load.  If there is high load, additional threads will be added, up
+  #     to the writer_max_threads_per_type.
+  #
+  #  Following types are implemented.
+  #   - Default
+  #   - as_path_analysis
+  #   - base attributes
+  writer_max_threads_per_type: 3
+
+  # Number of consecutive times the writer queue (per type) can sustain over
+  #    the high threshold mark.  If queue is above threshold for a consecutive
+  #    writer_allowed_over_queue_times value, a new thread will be added for
+  #    the writer type, providing it isn't already at max threads (per type).
+  writer_allowed_over_queue_times: 2
+
+  # Number of seconds the writer needs to sustain below the low queue threshold mark
+  #     in order to trigger scaling back the number of threads in use.  Only one thread
+  #     is scaled back a time.  It can take
+  #     [writer_seconds_thread_scale_back * writer_max_threads_per_type - 1] time to scale
+  #     back to one 1 (per type).
+  writer_seconds_thread_scale_back: 1800
+
+  # By default AS Path indexing is enabled.  This can be very resource intensive to MySQL
+  #    and disk.   You can disable updating the MySQL 'as_path_analysis' table if
+  #    this analysis is not needed/used.  Disabling this will effect the gen_asn_stats table,
+  #    which will also effect anything that uses that table.
+  disable_as_path_indexing: false
+
+mysql:
+  host    : "localhost:3306"
+  db_name : "openBMP"
+  username: "openbmp"
+  password: "openbmp"
+
+
+  # The number of statements or records to batch in a single bulk update/insert/delete
+  batch_records: 200
+
+  # The time in milliseconds to wait for batching records in a bulk update/insert/delete
+  batch_time_millis: 75
+
+  # The number of times to retry a statement
+  retries: 10
+
+kafka:
+
+  # Consumer configuration per https://kafka.apache.org/0102/documentation.html#consumerconfigs
+  #   Any and all consumer configs are supported.  Simply add them as they are documented.
+  #   Values should always be strings.    Integers will be converted to strings. If config
+  #   uses boolean value, make sure to double quote "true" and "false" so that they are
+  #   strings, not of type boolean.
+  consumer_config:
+    bootstrap.servers: "localhost:9092"
+
+    group.id  : "openbmp-mysql-consumer"
+    client.id : "openbmp-mysql-consumer"
+
+    session.timeout.ms: 16000
+    auto.offset.reset: "latest"
+    max.partition.fetch.bytes: 2000000
+    heartbeat.interval.ms: 10000
+    max.poll.records: 2000
+    fetch.max.wait.ms: 50
+
+    # For TLS/SSL config follow Kafka consumer configuration guide for setting up SSL/TLS.
+
+  # Delay in milliseconds between subscribing to topic patterns
+  #    Delay is introduced between each pattern when subscribing
+  topic_subscribe_delay_millis: 10000
+
+  # List of topic patterns to subscribe to.  Pattern is always a regex, but exact
+  #     topic name can be specified.
+  #
+  #     It's import to subscribe to the inventory topics before the NLRI topics, for
+  #     example router and peer, so that peer level state changes are handled first
+  #     when starting the consumer.  This is why we introduce a delay between subscriptions.
+  subscribe_topic_patterns:
+    - "openbmp[.]parsed[.]collector"
+    - "openbmp[.]parsed[.]router"
+    - "openbmp[.]parsed[.]peer"
+    - "openbmp[.]parsed[.]ls.*"
+    - "openbmp[.]parsed[.]bmp_stat"
+    - "openbmp[.]parsed[.]base_attribute"
+    - "openbmp[.]parsed[.]l3vpn"
+    - "openbmp[.]parsed[.]unicast_prefix"
+

@@ -14,7 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <openbmp-api.version>0.1.0-SNAPSHOT</openbmp-api.version>
         <kafka.version>0.10.2.0</kafka.version>
-        <mariadb.version>1.5.8</mariadb.version>
+        <mariadb.version>2.1.2</mariadb.version>
         <jackson-yaml.version>2.7.8</jackson-yaml.version>
         <log4j.version>2.7</log4j.version>
     </properties>
@@ -43,8 +43,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.3</version>
                 <configuration>
-                    <source>1.7</source>
-                    <target>1.7</target>
+                    <source>1.8</source>
+                    <target>1.8</target>
                 </configuration>
             </plugin>
             <plugin>

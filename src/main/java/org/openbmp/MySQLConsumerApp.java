@@ -74,24 +74,11 @@ public class MySQLConsumerApp
     }
 
     public void run() {
-        List<String> topics = new ArrayList<String>();
-
-        topics.add("openbmp.parsed.collector");
-        topics.add("openbmp.parsed.router");
-        topics.add("openbmp.parsed.peer");
-        topics.add("openbmp.parsed.bmp_stat");
-        topics.add("openbmp.parsed.ls_node");
-        topics.add("openbmp.parsed.ls_link");
-        topics.add("openbmp.parsed.ls_prefix");
-        topics.add("openbmp.parsed.base_attribute");
-        topics.add("openbmp.parsed.unicast_prefix");
-        topics.add("openbmp.parsed.l3vpn");
-
         int numConsumerThreads = 1;
         executor = Executors.newFixedThreadPool(numConsumerThreads);
 
         for (int i=0; i < numConsumerThreads; i++) {
-            MySQLConsumerRunnable consumer = new MySQLConsumerRunnable(createConsumerConfig(cfg), topics, cfg, routerConMap);
+            MySQLConsumerRunnable consumer = new MySQLConsumerRunnable(cfg, routerConMap);
             executor.submit(consumer);
             consumerThreads.add(consumer);
         }
@@ -99,37 +86,15 @@ public class MySQLConsumerApp
 
     }
 
-    private static Properties createConsumerConfig(Config cfg) {
-        Properties props = new Properties();
-        props.put("bootstrap.servers", cfg.getBootstrapServer());
-        props.put("group.id", cfg.getGroupId());
-        props.put("client.id", cfg.getClientId() != null ? cfg.getClientId() : cfg.getGroupId());
-        props.put("key.deserializer", StringDeserializer.class.getName());
-        props.put("value.deserializer", StringDeserializer.class.getName());
-        props.put("session.timeout.ms", "16000");
-        props.put("max.partition.fetch.bytes", "2000000");
-        props.put("heartbeat.interval.ms", "10000");
-        props.put("max.poll.records", "2000");
-        props.put("fetch.max.wait.ms", "50");
-
-        props.put("enable.auto.commit", "true");
-
-        if (cfg.getOffsetLargest() == Boolean.FALSE) {
-            logger.info("Using smallest for Kafka offset reset");
-            props.put("auto.offset.reset", "earliest");
-        } else {
-            logger.info("Using largest for Kafka offset reset");
-            props.put("auto.offset.reset", "latest");
-        }
-
-        return props;
-    }
-
-
     public static void main(String[] args) {
         Config cfg = Config.getInstance();
 
         cfg.parse(args);
+
+        if (! cfg.loadConfig()) {
+            logger.error("Failed to load the configuration file, exiting");
+            System.exit(1);
+        }
 
         // Validate DB connection
         try {
@@ -148,10 +113,22 @@ public class MySQLConsumerApp
 
         MySQLConsumerApp mysqlApp = new MySQLConsumerApp(cfg);
 
-        mysqlApp.run();
 
+        mysqlApp.run();
         try {
+
+            // Give some time to connect
+            Thread.sleep(5000);
+
             while (true) {
+                for (MySQLConsumerRunnable consumer: mysqlApp.consumerThreads) {
+                    if (! consumer.isRunning()) {
+                        logger.error("Consumer is not running, exiting");
+                        Thread.sleep(1000);
+                        System.exit(1);
+                    }
+                }
+
                 if (cfg.getStatsInterval() > 0) {
                     Thread.sleep(cfg.getStatsInterval() * 1000);
 

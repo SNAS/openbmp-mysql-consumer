@@ -11,7 +11,6 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -27,10 +26,6 @@ import org.apache.logging.log4j.Logger;
  *      the FIFO queue.
  */
 public class MySQLWriterRunnable implements  Runnable {
-    private final Integer MAX_BULK_STATEMENTS = 200;            // Maximum number of bulk values/multi-statements to allow
-    private final Integer MAX_BULK_WAIT_MS = 75;                // Maximum milliseconds to wait for bulk messages
-    private final Integer MAX_MYSQL_RETRIES = 10;               // Maximum MySQL retires
-
     private static final Logger logger = LogManager.getFormatterLogger(MySQLWriterRunnable.class.getName());
 
     private Connection con;                                     // MySQL connection
@@ -54,7 +49,31 @@ public class MySQLWriterRunnable implements  Runnable {
         run = true;
 
         con = null;
-        dbConnected = false;
+
+        connectMySQL();
+    }
+
+    private boolean connectMySQL() {
+        synchronized (this.lock) {
+            dbConnected = false;
+        }
+
+        if (con != null) {
+            try {
+                con.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            con = null;
+        }
+
+
+        logger.info("Writer connecting to MySQL");
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e1) {
+            // ignore
+        }
 
         /*
          * Establish connection to MySQL
@@ -67,7 +86,9 @@ public class MySQLWriterRunnable implements  Runnable {
                             "&enableQueryTimeouts=false",
                     cfg.getDbUser(), cfg.getDbPw());
 
-            logger.debug("Writer thread connected to mysql");
+            con.setAutoCommit(true);
+
+            logger.info("Writer connected to MySQL");
 
             synchronized (this.lock) {
                 dbConnected = true;
@@ -75,8 +96,10 @@ public class MySQLWriterRunnable implements  Runnable {
 
         } catch (SQLException e) {
             e.printStackTrace();
-            logger.warn("Writer thread failed to connect to mysql");
+            logger.warn("Writer thread failed to connect to mysql", e);
         }
+
+        return dbConnected;
     }
 
     /**
@@ -102,34 +125,45 @@ public class MySQLWriterRunnable implements  Runnable {
         Boolean success = Boolean.FALSE;
 
         // Loop the request if broken pipe, connection timed out, or deadlock
-         for (int i = 0; i <= retries; i++) {
+         for (int i = 0; i < retries; i++) {
             try {
                 Statement stmt = con.createStatement();
                 logger.trace("SQL Query retry = %d: %s", i, query);
 
                 stmt.executeUpdate(query);
+
                 i = retries;
                 success = Boolean.TRUE;
                 break;
 
             } catch (SQLException e) {
-                if (!e.getSQLState().equals("40001")) {
+                if (!e.getSQLState().equals("40001") && i >= (retries - 1)) {
                     logger.info("SQL exception state " + i + " : " + e.getSQLState());
                     logger.info("SQL exception: " + e.getMessage());
                 }
 
-                //e.printStackTrace();
+                if (e.getMessage().contains("Connection refused") ||
+                        e.getMessage().contains("Broken pipe") ||
+                        e.getMessage().contains("Connection timed out")) {
+                    logger.error("Not connected to mysql: " + e.getMessage());
 
-                if (!e.getMessage().contains("Broken pipe") && !e.getMessage().contains("Connection timed out") &&
-                        !e.getMessage().contains("Deadlock found when trying") ) {
-                    i = retries;
-                    break;
+                    while (!connectMySQL()) {
+                        try {
+                            Thread.sleep(4000);
+                        } catch (InterruptedException e1) {
+                            // ignore
+                        }
+                    }
                 }
+//                else if (!e.getMessage().contains("Deadlock found when trying") ) {
+//                    i = retries;
+//                    break;
+//                }
             }
         }
 
         if (!success) {
-            logger.warn("Failed to insert/update after max retires of %d", MAX_MYSQL_RETRIES);
+            logger.warn("Failed to insert/update after %d max retires", retries);
             logger.debug("query: " + query);
         }
     }
@@ -162,11 +196,12 @@ public class MySQLWriterRunnable implements  Runnable {
                 /*
                  * Do insert/query if max wait/duration has been reached or if max statements have been reached.
                  */
-                if (cur_time - prev_time > MAX_BULK_WAIT_MS ||
-                        bulk_count >= MAX_BULK_STATEMENTS) {
+                if (cur_time - prev_time > cfg.getDb_batch_time_millis() ||
+                        bulk_count >= cfg.getDb_batch_records()) {
 
                     if (bulk_count > 0) {
-                        logger.trace("Max reached, doing insert: wait_ms=%d bulk_count=%d", cur_time - prev_time, bulk_count);
+                        logger.trace("Max reached, doing insert: wait_ms=%d bulk_count=%d",
+                                    cur_time - prev_time, bulk_count);
 
                         StringBuilder query = new StringBuilder();
                         // Loop through queries and add them as multi-statements
@@ -204,7 +239,7 @@ public class MySQLWriterRunnable implements  Runnable {
                 }
 
                 // Get next query from queue
-                Map<String, String> cur_query = writerQueue.poll(MAX_BULK_WAIT_MS, TimeUnit.MILLISECONDS);
+                Map<String, String> cur_query = writerQueue.poll(cfg.getDb_batch_time_millis(), TimeUnit.MILLISECONDS);
 
                 if (cur_query != null) {
                     if (cur_query.containsKey("prefix")) {
@@ -219,7 +254,7 @@ public class MySQLWriterRunnable implements  Runnable {
                         }
 
                         if (cur_query.get("value").length() > 200000) {
-                            bulk_count = MAX_BULK_STATEMENTS;
+                            bulk_count = cfg.getDb_batch_records();
                             logger.debug("value length is: %d", cur_query.get("value").length());
                         }
                     }
@@ -236,7 +271,7 @@ public class MySQLWriterRunnable implements  Runnable {
             logger.error("Exception: ", e);
         }
 
-        logger.debug("Writer thread finished");
+        logger.info("Writer thread done");
     }
 
     /**

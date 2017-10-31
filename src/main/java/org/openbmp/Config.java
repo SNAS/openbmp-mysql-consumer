@@ -8,9 +8,18 @@
  */
 package org.openbmp;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.commons.cli.*;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.io.File;
+import java.io.InputStreamReader;
+import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Configuration for program
@@ -25,16 +34,25 @@ public class Config {
     private Options options = new Options();
 
     /// Config variables
-    private String bootstrapServer = "localhost:9092";
-    private String groupId = "openbmp-mysql-consumer";
-    private String clientId = null;
+    private Integer writer_max_threads_per_type = 3;             // Maximum number of writes per type
+    private Integer writer_allowed_over_queue_times = 2;         // Threshold to add threads when count is above this value
+    private Long writer_millis_thread_scale_back = 1200000L;     // Age in milliseconds when threads can be deleted
+
+    private String cfg_file = null;
     private Integer expected_heartbeat_interval = 330000;
     private Integer stats_interval = 300;
+    private Boolean disable_as_path_indexing = false;
     private String db_host = "localhost:3306";
     private String db_user = "openbmp";
     private String db_pw = "openbmp";
     private String db_name = "openBMP";
-    private Boolean offsetLargest = Boolean.FALSE;
+    private Integer db_batch_time_millis = 75;
+    private Integer db_batch_records = 200;
+    private Integer db_retries = 10;
+    private Properties kafka_consumer_props;
+    private Set<Pattern> kafka_topic_patterns;
+    private Integer topic_subscribe_delay_millis = 10000;       // topic subscription interval delay
+
 
     //Turns this class to a singleton
     public static Config getInstance() {
@@ -46,6 +64,7 @@ public class Config {
     }
 
     protected Config() {
+        options.addOption("cf", "config_file", true, "Configuration filename, default is to load the JAR/CP default one");
         options.addOption("b", "bootstrap", true, "Bootstrap servers hostanme:port (default is localhost:9092)");
         options.addOption("g", "group.id", true, "Kafka group ID (default is openbmp-mysql-consumer)");
         options.addOption("c", "client.id", true, "Kafka client ID (default uses group.id");
@@ -58,6 +77,11 @@ public class Config {
         options.addOption("dn", "db_name", true, "Database name (default is openBMP)");
         options.addOption("h", "help", false, "Usage help");
 
+
+        kafka_consumer_props = new Properties();
+        consumerConfigDefaults();
+
+        kafka_topic_patterns = new LinkedHashSet<>();
     }
 
     /**
@@ -80,13 +104,13 @@ public class Config {
             }
 
             if (cmd.hasOption("b"))
-                bootstrapServer = cmd.getOptionValue("b");
+                kafka_consumer_props.setProperty("bootstrap.servers", cmd.getOptionValue("b"));
 
             if (cmd.hasOption("ol"))
-                offsetLargest = Boolean.TRUE;
+                kafka_consumer_props.setProperty("auto.offset.reset", "latest");
 
             if (cmd.hasOption("g"))
-                groupId = cmd.getOptionValue("g");
+                kafka_consumer_props.setProperty("group.id", cmd.getOptionValue("g"));
 
             if (cmd.hasOption("e"))
                 expected_heartbeat_interval = Integer.valueOf(cmd.getOptionValue("e")) * 60 * 1000 + 30000;
@@ -94,10 +118,11 @@ public class Config {
             if (cmd.hasOption("s"))
                 stats_interval = Integer.valueOf(cmd.getOptionValue("s"));
 
+            if (cmd.hasOption("cf"))
+                cfg_file = cmd.getOptionValue("cf");
+
             if (cmd.hasOption("c"))
-                clientId = cmd.getOptionValue("c");
-            else
-                clientId = groupId;
+                kafka_consumer_props.setProperty("client.id", cmd.getOptionValue("c"));
 
             if (cmd.hasOption("dh"))
                 db_host = cmd.getOptionValue("dh");
@@ -134,16 +159,171 @@ public class Config {
     }
 
 
-    String getBootstrapServer() {
-        return bootstrapServer;
+    public boolean loadConfig() {
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+        Map<String, Object> map_cfg = null;
+
+        TypeReference<HashMap<String, Object>> typeRef_cfg = new TypeReference<HashMap<String, Object>>() {};
+
+        try {
+            if (cfg_file == null) {
+                map_cfg = mapper.readValue(new InputStreamReader(getClass().getResourceAsStream("/obmp-mysql-consumer.yml")), typeRef_cfg);
+
+            } else {
+                logger.info("Loading custom configuration file");
+                map_cfg = mapper.readValue(new File(cfg_file), typeRef_cfg);
+            }
+
+            for (Map.Entry<String, Object> entry: map_cfg.entrySet()) {
+                logger.debug("key: %s value: %s", entry.getKey(), entry.getValue());
+
+                /*
+                 * Base config
+                 */
+                if (entry.getKey().equalsIgnoreCase("base")) {
+                    for (Map.Entry<String, Object> subEntry: ((Map<String, Object>) entry.getValue()).entrySet()) {
+                        if (subEntry.getKey().equalsIgnoreCase("stats_interval"))
+                            stats_interval = Integer.valueOf(subEntry.getValue().toString());
+
+                        else if (subEntry.getKey().equalsIgnoreCase("heartbeat_max_age"))
+                            expected_heartbeat_interval = Integer.valueOf(subEntry.getValue().toString());
+
+                        else if (subEntry.getKey().equalsIgnoreCase("writer_max_threads_per_type")) {
+                            writer_max_threads_per_type = Integer.valueOf(subEntry.getValue().toString());
+                        }
+
+                        else if (subEntry.getKey().equalsIgnoreCase("writer_allowed_over_queue_times"))
+                            writer_allowed_over_queue_times = Integer.valueOf(subEntry.getValue().toString());
+
+                        else if (subEntry.getKey().equalsIgnoreCase("writer_seconds_thread_scale_back"))
+                            writer_millis_thread_scale_back = Long.valueOf(subEntry.getValue().toString()) * 1000;
+
+                        else if (subEntry.getKey().equalsIgnoreCase("disable_as_path_indexing"))
+                            disable_as_path_indexing = Boolean.valueOf(subEntry.getValue().toString());
+                    }
+                }
+
+                /*
+                 * MySQL Config
+                 */
+                if (entry.getKey().equalsIgnoreCase("mysql")) {
+                    for (Map.Entry<String, Object> subEntry : ((Map<String, Object>) entry.getValue()).entrySet()) {
+                        if (subEntry.getKey().equalsIgnoreCase("host"))
+                            db_host = subEntry.getValue().toString();
+
+                        else if (subEntry.getKey().equalsIgnoreCase("db_name"))
+                            db_name = subEntry.getValue().toString();
+
+                        else if (subEntry.getKey().equalsIgnoreCase("username"))
+                            db_user = subEntry.getValue().toString();
+
+                        else if (subEntry.getKey().equalsIgnoreCase("password"))
+                            db_pw = subEntry.getValue().toString();
+
+                        else if (subEntry.getKey().equalsIgnoreCase("batch_records"))
+                            db_batch_records = Integer.valueOf(subEntry.getValue().toString());
+
+                        else if (subEntry.getKey().equalsIgnoreCase("retries"))
+                            db_retries = Integer.valueOf(subEntry.getValue().toString());
+
+                        else if (subEntry.getKey().equalsIgnoreCase("batch_time_millis"))
+                            db_batch_time_millis = Integer.valueOf(subEntry.getValue().toString());
+                    }
+                }
+
+                /*
+                 * Kafka Config
+                 */
+                if (entry.getKey().equalsIgnoreCase("kafka")) {
+
+                    for (Map.Entry<String, Object> subEntry : ((Map<String, Object>) entry.getValue()).entrySet()) {
+                        if (subEntry.getKey().equalsIgnoreCase("topic_subscribe_delay_millis"))
+                            topic_subscribe_delay_millis = Integer.valueOf(subEntry.getValue().toString());
+
+                        else if (subEntry.getKey().equalsIgnoreCase("consumer_config")) {
+                            /*
+                             * Consumer Config
+                             */
+                            Map<String, Object> map = ((Map<String, Object>) subEntry.getValue());
+
+                            for (Map.Entry<String, Object> cEntry : map.entrySet()) {
+                                logger.debug("kafka consumer config - key: %25s value: %s", cEntry.getKey(), cEntry.getValue());
+                                kafka_consumer_props.setProperty(cEntry.getKey(), cEntry.getValue().toString());
+                            }
+
+                        }
+
+                        else if (subEntry.getKey().equalsIgnoreCase("subscribe_topic_patterns")) {
+                            List<String> patterns = ((List<String>) subEntry.getValue());
+
+                            for (String pat: patterns) {
+                                logger.debug("topic pattern: %s", pat);
+                                kafka_topic_patterns.add(Pattern.compile(pat));
+                            }
+
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return false;
+        }
+
+        return true;
     }
 
-    String getClientId() {
-        return clientId;
+    /*
+     * Default consumer properties
+     */
+    private void consumerConfigDefaults() {
+        kafka_consumer_props.setProperty("key.deserializer", StringDeserializer.class.getName());
+        kafka_consumer_props.setProperty("value.deserializer", StringDeserializer.class.getName());
+        kafka_consumer_props.setProperty("enable.auto.commit", "true");
+
+        kafka_consumer_props.setProperty("bootstrap.servers", "localhost:9092");
+        kafka_consumer_props.setProperty("group.id", "openbmp-mysql-consumer");
+        kafka_consumer_props.setProperty("client.id", "openbmp-mysql-consumer");
+        kafka_consumer_props.setProperty("session.timeout.ms", "16000");
+        kafka_consumer_props.setProperty("max.partition.fetch.bytes", "2000000");
+        kafka_consumer_props.setProperty("heartbeat.interval.ms", "10000");
+        kafka_consumer_props.setProperty("max.poll.records", "2000");
+        kafka_consumer_props.setProperty("fetch.max.wait.ms", "50");
+        kafka_consumer_props.setProperty("auto.offset.reset", "earliest");
     }
 
-    String getGroupId() {
-        return groupId;
+
+    String getCfg_file() {
+        return cfg_file;
+    }
+
+    Integer getWriter_max_threads_per_type() {
+        return writer_max_threads_per_type;
+    }
+
+    Integer getExpected_heartbeat_interval() {
+        return expected_heartbeat_interval;
+    }
+
+    Integer getWriter_allowed_over_queue_times() {
+        return writer_allowed_over_queue_times;
+    }
+
+    Long getWriter_millis_thread_scale_back() {
+        return writer_millis_thread_scale_back;
+    }
+
+    Properties getKafka_consumer_props() {
+        return kafka_consumer_props;
+    }
+
+    Set<Pattern> getKafka_topic_patterns() {
+        return kafka_topic_patterns;
+    }
+
+    Integer getTopic_subscribe_delay_millis() {
+        return topic_subscribe_delay_millis;
     }
 
     String getDbHost() { return db_host; }
@@ -154,9 +334,23 @@ public class Config {
 
     String getDbName() { return db_name; }
 
-    Boolean getOffsetLargest() { return offsetLargest; }
+    Integer getDb_batch_time_millis() {
+        return db_batch_time_millis;
+    }
+
+    Integer getDb_batch_records() {
+        return db_batch_records;
+    }
+
+    Integer getDb_retries() {
+        return db_retries;
+    }
 
     public Integer getHeartbeatInterval() { return expected_heartbeat_interval; }
+
+    Boolean getDisable_as_path_indexing() {
+        return disable_as_path_indexing;
+    }
 
     Integer getStatsInterval() { return stats_interval; }
 }
