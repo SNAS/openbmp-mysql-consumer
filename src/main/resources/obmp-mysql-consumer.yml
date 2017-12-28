@@ -77,7 +77,7 @@ kafka:
     session.timeout.ms: 16000
     heartbeat.interval.ms: 5000
     max.poll.interval.ms: 120000
-    auto.offset.reset: "latest"
+    auto.offset.reset: "earliest"
     max.partition.fetch.bytes: 2000000
     max.poll.records: 2000
     fetch.max.wait.ms: 50
