@@ -89,7 +89,7 @@ fi
     count=1
     done=1
     while [ $done -eq 1 -a $count -lt 1000 ]; do
-        $MYSQL_CMD -vv -e 'DELETE FROM as_path_analysis where isWithdrawn = True LIMIT 50000;' | grep -q ", 0 rows"
+        $MYSQL_CMD -vv -e 'DELETE FROM as_path_analysis where timestamp <= date_sub(current_timestamp, interval 30 day) LIMIT 50000;' | grep -q ", 0 rows"
         done=$?
         count=$((count + 1))
     done

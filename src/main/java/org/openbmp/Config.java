@@ -37,6 +37,7 @@ public class Config {
     private Integer writer_max_threads_per_type = 3;             // Maximum number of writes per type
     private Integer writer_allowed_over_queue_times = 2;         // Threshold to add threads when count is above this value
     private Long writer_millis_thread_scale_back = 1200000L;     // Age in milliseconds when threads can be deleted
+    private Long writer_rebalance_millis = 1800000L;
 
     private String cfg_file = null;
     private Integer expected_heartbeat_interval = 330000;
@@ -198,6 +199,10 @@ public class Config {
                         else if (subEntry.getKey().equalsIgnoreCase("writer_seconds_thread_scale_back"))
                             writer_millis_thread_scale_back = Long.valueOf(subEntry.getValue().toString()) * 1000;
 
+                        else if (subEntry.getKey().equalsIgnoreCase("writer_rebalance_seconds"))
+                            writer_rebalance_millis = Long.valueOf(subEntry.getValue().toString()) * 1000;
+
+
                         else if (subEntry.getKey().equalsIgnoreCase("disable_as_path_indexing"))
                             disable_as_path_indexing = Boolean.valueOf(subEntry.getValue().toString());
                     }
@@ -313,6 +318,10 @@ public class Config {
 
     Long getWriter_millis_thread_scale_back() {
         return writer_millis_thread_scale_back;
+    }
+
+    Long getWriter_rebalance_millis() {
+        return writer_rebalance_millis;
     }
 
     Properties getKafka_consumer_props() {

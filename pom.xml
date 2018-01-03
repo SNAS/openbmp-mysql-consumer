@@ -13,8 +13,8 @@
         <build.number>SNAPSHOT</build.number>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <openbmp-api.version>0.1.0-SNAPSHOT</openbmp-api.version>
-        <kafka.version>0.10.2.0</kafka.version>
-        <mariadb.version>2.1.2</mariadb.version>
+        <kafka.version>0.10.2.1</kafka.version>
+        <mariadb.version>2.2.0</mariadb.version>
         <jackson-yaml.version>2.7.8</jackson-yaml.version>
         <log4j.version>2.7</log4j.version>
     </properties>

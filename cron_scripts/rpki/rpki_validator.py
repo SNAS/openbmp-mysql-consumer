@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS %s (
     KEY idx_origin (recv_origin_as),
     KEY idx_prefix (prefix),
     KEY idx_prefix_full (prefix,prefix_len),
-    KEY idx_prefix_bits (prefix_bits) USING BTREE
+    KEY idx_prefix_bits (prefix_bits) USING BTREE,
     PRIMARY KEY (prefix, prefix_len, recv_origin_as)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
 PARTITION BY HASH (prefix_len)
@@ -319,31 +319,31 @@ class dbAcccess:
             self.conn.close()
             self.conn = None
 
-    def createTable(self, tableName, tableSchema, dropIfExists = True):
-        """ Create table schema
-
-            :param tablename:    The table name that is being created
-            :param tableSchema:  Create table syntax as it would be to create it in SQL
-            :param dropIfExists: True to drop the table, false to not drop it.
-
-            :return: True if the table successfully was created, false otherwise
-        """
-        if (not self.cursor):
-            print "ERROR: Looks like Mysql is not connected, try to reconnect."
-            return False
-
-        try:
-            if (dropIfExists == True):
-               self.cursor.execute("DROP TABLE IF EXISTS %s" % tableName)
-
-            self.cursor.execute(tableSchema)
-
-        except mysql.Error as err:
-            print("ERROR: Failed to create table - " + str(err))
-            #raise err
-
-
-        return True
+    # def createTable(self, tableName, tableSchema, dropIfExists = True):
+    #     """ Create table schema
+    #
+    #         :param tablename:    The table name that is being created
+    #         :param tableSchema:  Create table syntax as it would be to create it in SQL
+    #         :param dropIfExists: True to drop the table, false to not drop it.
+    #
+    #         :return: True if the table successfully was created, false otherwise
+    #     """
+    #     if (not self.cursor):
+    #         print "ERROR: Looks like Mysql is not connected, try to reconnect."
+    #         return False
+    #
+    #     try:
+    #         if (dropIfExists == True):
+    #            self.cursor.execute("DROP TABLE IF EXISTS %s" % tableName)
+    #
+    #         self.cursor.execute(tableSchema)
+    #
+    #     except mysql.Error as err:
+    #         print("ERROR: Failed to create table - " + str(err))
+    #         #raise err
+    #
+    #
+    #     return True
 
     def createTable(self, tableName, tableSchema, dropIfExists = True):
         """ Create table schema

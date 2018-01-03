@@ -37,7 +37,11 @@ base:
   #     is scaled back a time.  It can take
   #     [writer_seconds_thread_scale_back * writer_max_threads_per_type - 1] time to scale
   #     back to one 1 (per type).
-  writer_seconds_thread_scale_back: 1800
+  writer_seconds_thread_scale_back: 7200
+
+  # Number of seconds between rebalacing of writer threads
+  #    Rebalance will drain writer queues at this interval if at least one writer is above threshold
+  writer_rebalance_seconds: 1800
 
   # By default AS Path indexing is enabled.  This can be very resource intensive to MySQL
   #    and disk.   You can disable updating the MySQL 'as_path_analysis' table if
@@ -53,13 +57,13 @@ mysql:
 
 
   # The number of statements or records to batch in a single bulk update/insert/delete
-  batch_records: 200
+  batch_records: 100
 
   # The time in milliseconds to wait for batching records in a bulk update/insert/delete
   batch_time_millis: 75
 
   # The number of times to retry a statement
-  retries: 10
+  retries: 20
 
 kafka:
 

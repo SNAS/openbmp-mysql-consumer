@@ -1,7 +1,9 @@
 package org.openbmp.mysqlquery;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.openbmp.api.parsed.message.MsgBusFields;
 
@@ -72,10 +74,10 @@ public class BaseAttributeQuery extends Query{
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genAsPathAnalysisStatement() {
-        String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right,path_attr_hash_id, peer_hash_id)" +
-                                    " VALUES ", "" };
-
-                          //" ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
+        String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right,asn_left_is_peering)" +
+                                    " VALUES ",
+                          "" };
+                          //" ON DUPLICATE KEY UPDATE timestamp=values(timestamp)"};
         return stmt;
     }
 
@@ -86,6 +88,7 @@ public class BaseAttributeQuery extends Query{
      */
     public String genAsPathAnalysisValuesStatement() {
         StringBuilder sb = new StringBuilder();
+        Set<String> values = new HashSet<String>();
 
         /*
          * Iterate through the AS Path and extract out the left and right ASN for each AS within
@@ -96,8 +99,6 @@ public class BaseAttributeQuery extends Query{
             String as_path_str = ((String)lookupValue(MsgBusFields.AS_PATH, i)).trim();
             as_path_str = as_path_str.replaceAll("[{}]", "");
             String[] as_path = as_path_str.split(" ");
-
-            //System.out.println("AS Path = " + as_path_str);
 
             Long left_asn = 0L;
             Long right_asn = 0L;
@@ -132,20 +133,13 @@ public class BaseAttributeQuery extends Query{
                             continue;
                         }
 
-                        if (sb.length() > 0)
-                            sb.append(',');
-
-                        sb.append("(" + asn + "," + left_asn + "," + right_asn + ",'" + lookupValue(MsgBusFields.HASH, i) + "','" +
-                        		lookupValue(MsgBusFields.PEER_HASH, i) + "')");
+                        String isPeeringAsn = (i2 == 0) ? "1" : "0";
+                        values.add("(" + asn + "," + left_asn + "," + right_asn + "," + isPeeringAsn + ")");
 
 
                     } else {
-                        // No more left in path
-                        if (sb.length() > 0)
-                            sb.append(',');
-
-                        sb.append("(" + asn + "," + left_asn + ",0,'" + lookupValue(MsgBusFields.HASH, i) + "','" +
-                        		lookupValue(MsgBusFields.PEER_HASH, i) + "')");
+                        // No more left in path - Origin ASN
+                          values.add("(" + asn + "," + left_asn + ",0,0)");
                         break;
                     }
 
@@ -154,9 +148,15 @@ public class BaseAttributeQuery extends Query{
             }
         }
 
-        //System.out.println("AS insert: " + sb.toString());
-        if (sb.length() <= 0)
-            sb.append("");
+
+        for (String value: values) {
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+
+            sb.append(value);
+        }
+
         return sb.toString();
     }
 

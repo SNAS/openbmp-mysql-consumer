@@ -272,25 +272,25 @@ CREATE TRIGGER rib_aft_update AFTER UPDATE on rib
                END IF;
             END IF;
 
-            ELSEIF (new.isWithdrawn = False AND old.isWithdrawn = True) THEN
-			    SET local_count = 0;
-               # RULE 5: PREFIX_LOSS_CLEAR - The prefix is back from being globally removed
-               SELECT watcher_rule_num INTO local_count 
-                     FROM watcher_prefix_log
-                     WHERE prefix_bin = new.prefix_bin 
-                           AND prefix_len = new.prefix_len AND watcher_rule_num in (4,5)
-                     ORDER BY last_ts desc,watcher_rule_num
-                     LIMIT 1;
-
-               IF (local_count = 4) THEN
-                  SET period_timestamp = from_unixtime(floor(unix_timestamp(new.timestamp) / period_seconds) * period_seconds);
-
-                  INSERT IGNORE INTO watcher_prefix_log (prefix_bin,prefix_len,peer_hash_id,
-                         watcher_rule_num,watcher_rule_name,period_ts,origin_as,prev_origin_as,last_ts)
-					   VALUES (new.prefix_bin,new.prefix_len,new.peer_hash_id,
-                                5, 'PREFIX_LOSS_CLEAR', period_timestamp, new.origin_as, old.origin_as, new.timestamp)
-				   ON DUPLICATE KEY UPDATE last_ts = new.timestamp, count = count + 1;
-               END IF;
+#            ELSEIF (new.isWithdrawn = False AND old.isWithdrawn = True) THEN
+#			    SET local_count = 0;
+#               # RULE 5: PREFIX_LOSS_CLEAR - The prefix is back from being globally removed
+#               SELECT watcher_rule_num INTO local_count 
+#                     FROM watcher_prefix_log
+#                     WHERE prefix_bin = new.prefix_bin 
+#                           AND prefix_len = new.prefix_len AND watcher_rule_num in (4,5)
+#                     ORDER BY last_ts desc,watcher_rule_num
+#                     LIMIT 1;
+#
+#               IF (local_count = 4) THEN
+#                  SET period_timestamp = from_unixtime(floor(unix_timestamp(new.timestamp) / period_seconds) * period_seconds);#
+#
+#                  INSERT IGNORE INTO watcher_prefix_log (prefix_bin,prefix_len,peer_hash_id,
+#                         watcher_rule_num,watcher_rule_name,period_ts,origin_as,prev_origin_as,last_ts)
+#					   VALUES (new.prefix_bin,new.prefix_len,new.peer_hash_id,
+#                                5, 'PREFIX_LOSS_CLEAR', period_timestamp, new.origin_as, old.origin_as, new.timestamp)
+#				   ON DUPLICATE KEY UPDATE last_ts = new.timestamp, count = count + 1;
+#               END IF;
 
             ELSEIF (new.isWithdrawn = True) THEN
 			   SET local_count = 1;

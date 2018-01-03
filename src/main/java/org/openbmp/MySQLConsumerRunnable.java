@@ -294,29 +294,15 @@ public class MySQLConsumerRunnable implements Runnable {
 
         while (running) {
 
-//            if (running == false) {
-//                try {
-//                    Thread.sleep(1000);
-//
-//                } catch (InterruptedException e) {
-//                    break;
-//                }
-//
-//                consumer.wakeup();
-//
-//                //running = connect();
-//                continue;
-//            }
-
             // Subscribe to topics if needed
             if (! topics_all_subscribed) {
                 subscribe_prev_timestamp = subscribe_topics(subscribe_prev_timestamp);
 
-            } else if (pausedTopics.size() > 0 && (System.currentTimeMillis() - last_paused_time) > 90000) {
+            } /* else if (pausedTopics.size() > 0 && (System.currentTimeMillis() - last_paused_time) > 90000) {
                 logger.info("Resumed paused %d topics", pausedTopics.size());
                 consumer.resume(pausedTopics);
                 pausedTopics.clear();
-            }
+            } */
 
             try {
                 ConsumerRecords<String, String> records = consumer.poll(100);
@@ -377,7 +363,7 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = router;
                         dbQuery = routerQuery;
 
-                        pauseUnicastPrefix();
+                        //pauseUnicastPrefix();
 
                         // Disconnect the peers
                         String sql = routerQuery.genPeerRouterUpdate(routerConMap);
@@ -400,7 +386,7 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = peer;
                         dbQuery = peerQuery;
 
-                        pauseUnicastPrefix();
+                        //pauseUnicastPrefix();
 
                         // Add the withdrawn
                         Map<String, String> rib_update = new HashMap<String, String>();
@@ -420,6 +406,13 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = attr_obj;
                         dbQuery = baseAttrQuery;
 
+                        if (! cfg.getDisable_as_path_indexing()) {
+                            addBulkQuerytoWriter(record.key(),
+                                    ((BaseAttributeQuery) dbQuery).genAsPathAnalysisStatement(),
+                                    ((BaseAttributeQuery) dbQuery).genAsPathAnalysisValuesStatement(),
+                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
+                        }
+
                     } else if (message.getType().equalsIgnoreCase("unicast_prefix") || record.topic().equals("openbmp.parsed.unicast_prefix")) {
                         logger.trace("Parsing unicast_prefix message");
                         unicast_prefix_msg_count++;
@@ -427,26 +420,20 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = new UnicastPrefix(message.getVersion(), message.getContent());
                         dbQuery = new UnicastPrefixQuery(obj.getRowMap());
 
-                        if (cfg.getDisable_as_path_indexing() == false) {
-
-                            Map<String, String> update = new HashMap<String, String>();
-                            update.put("query", ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement()[0] +
-                                            ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement() + ")");
-
-                            sendToWriter(record.key(),update, ThreadType.THRAED_AS_PATH_ANALYSIS);
-
-//                            // Mark previous entries as withdrawn before update
+                        // moved to base_attributes
+//                        if (cfg.getDisable_as_path_indexing() == false) {
+//
 //                            addBulkQuerytoWriter(record.key(),
-//                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisWithdrawStatement(),
-//                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisWithdrawValuesStatement(),
+//                                    ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawStatement(),
+//                                    ((UnicastPrefixQuery)dbQuery).genAsPathAnalysisWithdrawValuesStatement(),
 //                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
-
-                            // Add as_path_analysis entries
-                            addBulkQuerytoWriter(record.key(),
-                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisStatement(),
-                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisValuesStatement(),
-                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
-                        }
+//
+//                            // Add as_path_analysis entries
+//                            addBulkQuerytoWriter(record.key(),
+//                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisStatement(),
+//                                    ((UnicastPrefixQuery) dbQuery).genAsPathAnalysisValuesStatement(),
+//                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
+//                        }
 
                     } else if (message.getType().equalsIgnoreCase("l3vpn") ||record.topic().equals("openbmp.parsed.l3vpn")) {
                         logger.trace("Parsing L3VPN prefix message");
@@ -526,9 +513,11 @@ public class MySQLConsumerRunnable implements Runnable {
             for (MySQLWriterObject obj : writers) {
                 int i = 0;
                 while (obj.writerQueue.size() > 0) {
-                    if (i >= 500) {
+                    if (i >= 5000) {
                         i = 0;
                         consumer.poll(0);           // NOTE: consumer is paused already.
+
+                        logger.info("drain queue writer size is " + obj.writerQueue.size());
                     }
                     ++i;
 
@@ -540,6 +529,7 @@ public class MySQLConsumerRunnable implements Runnable {
                 }
 
                 obj.assigned.clear();
+                obj.above_count = 0;
             }
         }
     }
@@ -560,6 +550,40 @@ public class MySQLConsumerRunnable implements Runnable {
             logger.info("Done adding new writer thread for type " + thread_type);
 
         }
+    }
+
+    private boolean rebalanceWriterThreads(ThreadType thread_type) {
+
+        if ((System.currentTimeMillis() - last_writer_thread_chg_time) < cfg.getWriter_rebalance_millis()) {
+            return false;
+        }
+
+        List<MySQLWriterObject> writers = writer_thread_map.get(thread_type);
+
+        boolean lowThreads = false;
+        boolean congestedThreads = false;
+
+        for (MySQLWriterObject obj: writers) {
+
+            if (obj.above_count > cfg.getWriter_allowed_over_queue_times() && obj.assigned.size() > 1) {
+                congestedThreads = true;
+            }
+            else if (obj.above_count <= 0 && obj.writerQueue.size() <= 200) {
+                lowThreads = true;
+            }
+        }
+
+        if (congestedThreads && lowThreads) {
+            logger.info("Rebalancing threads for type " + thread_type);
+            resetWriters(thread_type);
+
+            logger.info("DONE rebalancing threads for type " + thread_type);
+
+            last_writer_thread_chg_time = System.currentTimeMillis();
+            return true;
+        }
+
+        return false;
     }
 
     private void delWriterThread(ThreadType thread_type) {
@@ -592,56 +616,68 @@ public class MySQLConsumerRunnable implements Runnable {
             for (ThreadType t: ThreadType.values()) {
                 List<MySQLWriterObject> writers = writer_thread_map.get(t);
                 int i = 0;
-                for (MySQLWriterObject obj: writers) {
+                int threadsBelowThreshold = 0;
 
-                    if (obj.writerQueue.size() > 10000) {
+                if ( (rebalanceWriterThreads(t)) == true) {
+                    continue;
+                }
+                else {
 
-                        if (obj.above_count > cfg.getWriter_allowed_over_queue_times()) {
+                    for (MySQLWriterObject obj : writers) {
 
-                            if (writers.size() < cfg.getWriter_max_threads_per_type()) {
-                                // Add new thread
-                                logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d : adding new thread",
-                                        t.toString(), i,
-                                        obj.assigned.size(),
-                                        obj.writerQueue.size(),
-                                        obj.above_count,
-                                        writers.size());
+                        if (obj.writerQueue.size() > 10000) {
 
-                                obj.above_count = 0;
+                            if (obj.above_count > cfg.getWriter_allowed_over_queue_times()) {
 
-                                addWriterThread(t);
-                                break;
+                                if (writers.size() < cfg.getWriter_max_threads_per_type()) {
+                                    // Add new thread
+                                    logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d : adding new thread",
+                                            t.toString(), i,
+                                            obj.assigned.size(),
+                                            obj.writerQueue.size(),
+                                            obj.above_count,
+                                            writers.size());
 
+                                    obj.above_count = 0;
+
+                                    addWriterThread(t);
+                                    break;
+
+                                } else {
+                                    // At max threads
+                                    //obj.above_count++;
+
+                                    logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d, running max threads",
+                                            t.toString(), i,
+                                            obj.assigned.size(),
+                                            obj.writerQueue.size(),
+                                            obj.above_count,
+                                            writers.size());
+                                }
                             } else {
-                                // At max threads
-                                //obj.above_count++;
+                                obj.above_count++;
 
-                                logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d, running max threads",
+                                // under above threshold
+                                logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d",
                                         t.toString(), i,
                                         obj.assigned.size(),
                                         obj.writerQueue.size(),
                                         obj.above_count,
                                         writers.size());
                             }
-                        } else {
-                            obj.above_count++;
 
-                            // under above threshold
-                            logger.info("Writer %s %d: assigned = %d, queue = %d, above_count = %d, threads = %d",
-                                    t.toString(), i,
-                                    obj.assigned.size(),
-                                    obj.writerQueue.size(),
-                                    obj.above_count,
-                                    writers.size());
+                        } else if (obj.writerQueue.size() < 100) {
+                            obj.above_count = 0;
+                            threadsBelowThreshold++;
                         }
 
-                    } else if (obj.writerQueue.size() < 100){
-                        obj.above_count = 0;
+                        i++;
+                    }
+
+                    if (threadsBelowThreshold >= writers.size()) {
                         delWriterThread(t);
                         break;
                     }
-
-                    i++;
                 }
             }
 
@@ -686,7 +722,8 @@ public class MySQLConsumerRunnable implements Runnable {
 
             int i = 0;
             while (found_obj.writerQueue.offer(query) == false) {
-                if (i >= 500) {
+                if (i >= 1000) {
+//                    logger.info("send to writer congested, waiting. queue size: " + found_obj.writerQueue.size());
                     i = 0;
                     consumer.poll(0);           // NOTE: consumer is paused already.
                 }

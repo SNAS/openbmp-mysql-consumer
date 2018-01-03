@@ -154,11 +154,13 @@ public class MySQLWriterRunnable implements  Runnable {
                             // ignore
                         }
                     }
+                } else if (e.getMessage().contains("Deadlock found when trying") ) {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e2) {
+                        // ignore
+                    }
                 }
-//                else if (!e.getMessage().contains("Deadlock found when trying") ) {
-//                    i = retries;
-//                    break;
-//                }
             }
         }
 
@@ -225,7 +227,7 @@ public class MySQLWriterRunnable implements  Runnable {
                         }
 
                         if (query.length() > 0) {
-                            mysqlQueryUpdate(query.toString(), 10);
+                            mysqlQueryUpdate(query.toString(), cfg.getDb_retries());
                         }
 
                         prev_time = System.currentTimeMillis();

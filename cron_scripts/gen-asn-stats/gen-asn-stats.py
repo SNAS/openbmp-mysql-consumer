@@ -157,7 +157,7 @@ INSERT_LAST_ASN_STATS = (
         "REPLACE INTO %s (asn,isTransit,isOrigin,transit_v4_prefixes,transit_v6_prefixes,origin_v4_prefixes,origin_v6_prefixes)"
         "     SELECT asn,isTransit,isOrigin,transit_v4_prefixes,transit_v6_prefixes,origin_v4_prefixes,origin_v6_prefixes"
         "          FROM gen_asn_stats"
-        "          WHERE timestamp >= date_sub(current_timestamp, interval 8 minute)"
+        "          WHERE timestamp >= date_sub(current_timestamp, interval 10 minute)"
         "          GROUP BY asn"
     ) % (TBL_GEN_ASN_STATS_LAST_NAME)
 
