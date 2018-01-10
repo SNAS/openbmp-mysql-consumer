@@ -60,7 +60,16 @@ public class L3VpnPrefixQuery extends Query{
 
             sb.append("X'" + IpAddr.getIpHex((String) lookupValue(MsgBusFields.PREFIX, i)) + "',");
             sb.append("X'" + IpAddr.getIpBroadcastHex((String) lookupValue(MsgBusFields.PREFIX, i), (Integer) lookupValue(MsgBusFields.PREFIX_LEN, i)) + "',");
-            sb.append("'" + IpAddr.getIpBits((String) lookupValue(MsgBusFields.PREFIX, i)).substring(0,(Integer)lookupValue(MsgBusFields.PREFIX_LEN, i)) + "',");
+
+            try {
+                sb.append("'" + IpAddr.getIpBits((String) lookupValue(MsgBusFields.PREFIX, i)).substring(0,(Integer)lookupValue(MsgBusFields.PREFIX_LEN, i)) + "',");
+            } catch (StringIndexOutOfBoundsException e) {
+
+                //TODO: Fix getIpBits to support mapped IPv4 addresses in IPv6 (::ffff:ipv4)
+                System.out.println("IP prefix failed to convert to bits: " +
+                        (String) lookupValue(MsgBusFields.PREFIX, i) + " len: " + (Integer) lookupValue(MsgBusFields.PREFIX_LEN, i));
+                sb.append("'',");
+            }
 
             sb.append("'" + lookupValue(MsgBusFields.TIMESTAMP, i) + "',");
             sb.append((((String)lookupValue(MsgBusFields.ACTION, i)).equalsIgnoreCase("del") ? 1 : 0) + ",");
