@@ -295,7 +295,7 @@ public class MySQLConsumerRunnable implements Runnable {
         while (running) {
 
             // Subscribe to topics if needed
-            if (! topics_all_subscribed) {
+            if (!topics_all_subscribed) {
                 subscribe_prev_timestamp = subscribe_topics(subscribe_prev_timestamp);
 
             } /* else if (pausedTopics.size() > 0 && (System.currentTimeMillis() - last_paused_time) > 90000) {
@@ -330,7 +330,7 @@ public class MySQLConsumerRunnable implements Runnable {
                      * Parse the data based on topic
                      */
                     query = new HashMap<String, String>();
-                    if (message.getType().equalsIgnoreCase("collector") || record.topic().equals("openbmp.parsed.collector")) {
+                    if ((message.getType() != null && message.getType().equalsIgnoreCase("collector")) || record.topic().equals("openbmp.parsed.collector")) {
                         logger.trace("Parsing collector message");
                         collector_msg_count++;
 
@@ -354,7 +354,7 @@ public class MySQLConsumerRunnable implements Runnable {
 
                         }
 
-                    } else if (message.getType().equalsIgnoreCase("router") || record.topic().equals("openbmp.parsed.router")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("router")) || record.topic().equals("openbmp.parsed.router")) {
                         logger.trace("Parsing router message");
                         router_msg_count++;
 
@@ -377,7 +377,7 @@ public class MySQLConsumerRunnable implements Runnable {
                             sendToWriter(record.key(), peer_update, ThreadType.THREAD_DEFAULT);
                         }
 
-                    } else if (message.getType().equalsIgnoreCase("peer") || record.topic().equals("openbmp.parsed.peer")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("peer")) || record.topic().equals("openbmp.parsed.peer")) {
                         logger.trace("Parsing peer message");
                         peer_msg_count++;
 
@@ -395,7 +395,7 @@ public class MySQLConsumerRunnable implements Runnable {
                         logger.debug("Processed peer %s / %s", peerQuery.genValuesStatement(), peerQuery.genRibPeerUpdate());
                         sendToWriter(record.key(), rib_update, ThreadType.THREAD_DEFAULT);
 
-                    } else if (message.getType().equalsIgnoreCase("base_attribute") || record.topic().equals("openbmp.parsed.base_attribute")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("base_attribute")) || record.topic().equals("openbmp.parsed.base_attribute")) {
                         logger.trace("Parsing base_attribute message");
                         base_attribute_msg_count++;
 
@@ -406,14 +406,14 @@ public class MySQLConsumerRunnable implements Runnable {
                         obj = attr_obj;
                         dbQuery = baseAttrQuery;
 
-                        if (! cfg.getDisable_as_path_indexing()) {
+                        if (!cfg.getDisable_as_path_indexing()) {
                             addBulkQuerytoWriter(record.key(),
                                     ((BaseAttributeQuery) dbQuery).genAsPathAnalysisStatement(),
                                     ((BaseAttributeQuery) dbQuery).genAsPathAnalysisValuesStatement(),
                                     ThreadType.THRAED_AS_PATH_ANALYSIS);
                         }
 
-                    } else if (message.getType().equalsIgnoreCase("unicast_prefix") || record.topic().equals("openbmp.parsed.unicast_prefix")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("unicast_prefix")) || record.topic().equals("openbmp.parsed.unicast_prefix")) {
                         logger.trace("Parsing unicast_prefix message");
                         unicast_prefix_msg_count++;
 
@@ -435,35 +435,35 @@ public class MySQLConsumerRunnable implements Runnable {
 //                                    ThreadType.THRAED_AS_PATH_ANALYSIS);
 //                        }
 
-                    } else if (message.getType().equalsIgnoreCase("l3vpn") ||record.topic().equals("openbmp.parsed.l3vpn")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("l3vpn")) || record.topic().equals("openbmp.parsed.l3vpn")) {
                         logger.trace("Parsing L3VPN prefix message");
                         l3vpn_prefix_msg_count++;
 
                         obj = new L3VpnPrefix(message.getVersion(), message.getContent());
                         dbQuery = new L3VpnPrefixQuery(obj.getRowMap());
 
-                    } else if (message.getType().equalsIgnoreCase("bmp_stat") || record.topic().equals("openbmp.parsed.bmp_stat")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("bmp_stat")) || record.topic().equals("openbmp.parsed.bmp_stat")) {
                         logger.trace("Parsing bmp_stat message");
                         stat_msg_count++;
 
                         obj = new BmpStat(message.getContent());
                         dbQuery = new BmpStatQuery(obj.getRowMap());
 
-                    } else if (message.getType().equalsIgnoreCase("ls_node") || record.topic().equals("openbmp.parsed.ls_node")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("ls_node")) || record.topic().equals("openbmp.parsed.ls_node")) {
                         logger.trace("Parsing ls_node message");
                         ls_node_msg_count++;
 
                         obj = new LsNode(message.getVersion(), message.getContent());
                         dbQuery = new LsNodeQuery(obj.getRowMap());
 
-                    } else if (message.getType().equalsIgnoreCase("ls_link") || record.topic().equals("openbmp.parsed.ls_link")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("ls_link")) || record.topic().equals("openbmp.parsed.ls_link")) {
                         logger.trace("Parsing ls_link message");
                         ls_link_msg_count++;
 
                         obj = new LsLink(message.getVersion(), message.getContent());
                         dbQuery = new LsLinkQuery(obj.getRowMap());
 
-                    } else if (message.getType().equalsIgnoreCase("ls_prefix") || record.topic().equals("openbmp.parsed.ls_prefix")) {
+                    } else if ((message.getType() != null && message.getType().equalsIgnoreCase("ls_prefix")) || record.topic().equals("openbmp.parsed.ls_prefix")) {
                         logger.trace("Parsing ls_prefix message");
                         ls_prefix_msg_count++;
 
@@ -480,7 +480,7 @@ public class MySQLConsumerRunnable implements Runnable {
                      */
                     if (obj != null) {
                         addBulkQuerytoWriter(record.key(), dbQuery.genInsertStatement(),
-                                             dbQuery.genValuesStatement(), thread_type);
+                                dbQuery.genValuesStatement(), thread_type);
                     }
                 }
 
@@ -489,6 +489,9 @@ public class MySQLConsumerRunnable implements Runnable {
 
                 resume();
 
+
+            } catch (NullPointerException ex1 ) {
+                logger.warn("Ignoring kafka consumer exception: ", ex1);
 
             } catch (Exception ex) {
                 logger.warn("kafka consumer exception: ", ex);
