@@ -1083,6 +1083,18 @@ CREATE TABLE geo_ip (
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 --
+-- v_geo_ip view
+--
+drop view IF EXISTS v_geo_ip;
+create view v_geo_ip AS
+  SELECT inet6_ntoa(ip_start) as ip_start,
+         inet6_ntoa(ip_end) as ip_end,
+    addr_type, country,stateprov,city,latitude,longitude,timezone_offset,timezone_name,
+    isp_name,connection_type,organization_name,ip_start as ip_start_bin,ip_end as ip_end_bin
+  FROM geo_ip;
+
+
+--
 -- Table structure for table geo_location
 --
 DROP TABLE IF EXISTS geo_location;
