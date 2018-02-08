@@ -47,7 +47,7 @@ base:
   #    and disk.   You can disable updating the MySQL 'as_path_analysis' table if
   #    this analysis is not needed/used.  Disabling this will effect the gen_asn_stats table,
   #    which will also effect anything that uses that table.
-  disable_as_path_indexing: true
+  disable_as_path_indexing: false
 
 mysql:
   host    : "localhost:3306"
