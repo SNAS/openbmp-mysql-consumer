@@ -1269,7 +1269,7 @@ CREATE VIEW v_routes_history AS
   SELECT
                 rtr.name as RouterName, rtr.ip_address as RouterAddress,
 	        p.name AS PeerName,
-                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,pathlog.labels AS Labels,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,pathlog.labels AS Labels,pathlod.path_id AS path_id,
                 path.origin AS Origin,path.origin_as AS Origin_AS,
                     path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
                 path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
