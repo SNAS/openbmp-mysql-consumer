@@ -349,6 +349,7 @@ CREATE TABLE path_attr_log (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   prefix varchar(46) NOT NULL,
   prefix_len tinyint(3) unsigned NOT NULL,
+  labels varchar(255) DEFAULT NULL,
   origin_as int(10) unsigned NOT NULL,
   PRIMARY KEY (id,peer_hash_id,timestamp),
   KEY idx_ts (timestamp),
@@ -1267,7 +1268,7 @@ CREATE VIEW v_routes_history AS
   SELECT
                 rtr.name as RouterName, rtr.ip_address as RouterAddress,
 	        p.name AS PeerName,
-                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,pathlog.labels AS Labels,
                 path.origin AS Origin,path.origin_as AS Origin_AS,
                     path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
                 path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
