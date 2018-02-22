@@ -524,8 +524,8 @@ FOR EACH ROW
         IF (new.isWithdrawn = False) THEN
           IF (old.path_attr_hash_id != new.path_attr_hash_id AND old.path_attr_hash_id != '') THEN
 
-            INSERT IGNORE INTO path_attr_log (prefix,prefix_len,path_attr_hash_id,peer_hash_id,origin_as,timestamp)
-            VALUES (old.prefix,old.prefix_len,old.path_attr_hash_id,old.peer_hash_id,old.origin_as,
+            INSERT IGNORE INTO path_attr_log (prefix,prefix_len,labels,path_attr_hash_id,peer_hash_id,origin_as,timestamp)
+            VALUES (old.prefix,old.prefix_len,old.labels,old.path_attr_hash_id,old.peer_hash_id,old.origin_as,
                     old.timestamp);
 
           END IF;
