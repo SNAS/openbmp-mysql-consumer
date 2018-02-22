@@ -350,6 +350,7 @@ CREATE TABLE path_attr_log (
   prefix varchar(46) NOT NULL,
   prefix_len tinyint(3) unsigned NOT NULL,
   labels varchar(255) DEFAULT NULL,
+  path_id int(10) unsigned DEFAULT NULL,
   origin_as int(10) unsigned NOT NULL,
   PRIMARY KEY (id,peer_hash_id,timestamp),
   KEY idx_ts (timestamp),
@@ -524,8 +525,8 @@ FOR EACH ROW
         IF (new.isWithdrawn = False) THEN
           IF (old.path_attr_hash_id != new.path_attr_hash_id AND old.path_attr_hash_id != '') THEN
 
-            INSERT IGNORE INTO path_attr_log (prefix,prefix_len,labels,path_attr_hash_id,peer_hash_id,origin_as,timestamp)
-            VALUES (old.prefix,old.prefix_len,old.labels,old.path_attr_hash_id,old.peer_hash_id,old.origin_as,
+            INSERT IGNORE INTO path_attr_log (prefix,prefix_len,labels,path_id,path_attr_hash_id,peer_hash_id,origin_as,timestamp)
+            VALUES (old.prefix,old.prefix_len,old.labels,old.path_id,old.path_attr_hash_id,old.peer_hash_id,old.origin_as,
                     old.timestamp);
 
           END IF;
