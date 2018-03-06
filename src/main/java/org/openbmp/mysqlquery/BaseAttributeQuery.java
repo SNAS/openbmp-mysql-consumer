@@ -22,8 +22,8 @@ public class BaseAttributeQuery extends Query{
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genInsertStatement() {
-        String [] stmt = { " INSERT INTO path_attrs (hash_id,peer_hash_id,origin,as_path,origin_as,next_hop,med,local_pref," +
-                                "isAtomicAgg,aggregator,community_list,ext_community_list," +
+        final String [] stmt = { " INSERT INTO path_attrs (hash_id,peer_hash_id,origin,as_path,origin_as,next_hop,med,local_pref," +
+                                "isAtomicAgg,aggregator,community_list,ext_community_list,large_community_list," +
                                 "cluster_list,originator_id,as_path_count,nexthop_isIPv4,timestamp) VALUES ",
 
                            " ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
@@ -55,6 +55,7 @@ public class BaseAttributeQuery extends Query{
             sb.append("'" + lookupValue(MsgBusFields.AGGREGATOR, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.COMMUNITY_LIST, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.EXT_COMMUNITY_LIST, i) + "',");
+            sb.append("'" + lookupValue(MsgBusFields.LARGE_COMMUNITY_LIST, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.CLUSTER_LIST, i) + "',");
             sb.append("'" + lookupValue(MsgBusFields.ORIGINATOR_ID, i) + "',");
             sb.append(lookupValue(MsgBusFields.AS_PATH_COUNT, i) + ",");
@@ -74,7 +75,7 @@ public class BaseAttributeQuery extends Query{
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genAsPathAnalysisStatement() {
-        String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right,asn_left_is_peering)" +
+        final String [] stmt = {" INSERT IGNORE INTO as_path_analysis (asn,asn_left,asn_right,asn_left_is_peering)" +
                                     " VALUES ",
                           "" };
                           //" ON DUPLICATE KEY UPDATE timestamp=values(timestamp)"};
@@ -168,7 +169,7 @@ public class BaseAttributeQuery extends Query{
      *      1 = ON DUPLICATE KEY UPDATE ...  or empty if not used.
      */
     public String[] genCommunityAnalysisStatement() {
-        String [] stmt = {" INSERT IGNORE INTO community_analysis (community,part1,part2,path_attr_hash_id, peer_hash_id)" +
+        final String [] stmt = {" INSERT IGNORE INTO community_analysis (community,part1,part2,path_attr_hash_id, peer_hash_id)" +
                 " VALUES ", "" };
 
                 //" ON DUPLICATE KEY UPDATE timestamp=values(timestamp) " };
