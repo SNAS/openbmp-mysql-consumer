@@ -138,7 +138,7 @@ UPGRADE
 # Version 1.20 to current version
 # --------------------------------------------------------------
 
-elif [[ $SCHEMA_VERSION = "1.20" -o  $SCHEMA_VERSION = "1.21" ]]; then
+elif [[ $SCHEMA_VERSION = "1.20" ||  $SCHEMA_VERSION = "1.21" ]]; then
 
 echo "Upgrading from $SCHEMA_VERSION to $CUR_VERSION"
 $MYSQL_CMD <<UPGRADE
