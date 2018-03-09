@@ -350,6 +350,8 @@ CREATE TABLE path_attr_log (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   prefix varchar(46) NOT NULL,
   prefix_len tinyint(3) unsigned NOT NULL,
+  labels varchar(255) DEFAULT NULL,
+  path_id int(10) unsigned DEFAULT NULL,
   origin_as int(10) unsigned NOT NULL,
   PRIMARY KEY (id,peer_hash_id,timestamp),
   KEY idx_ts (timestamp),
@@ -524,8 +526,8 @@ FOR EACH ROW
         IF (new.isWithdrawn = False) THEN
           IF (old.path_attr_hash_id != new.path_attr_hash_id AND old.path_attr_hash_id != '') THEN
 
-            INSERT IGNORE INTO path_attr_log (prefix,prefix_len,path_attr_hash_id,peer_hash_id,origin_as,timestamp)
-            VALUES (old.prefix,old.prefix_len,old.path_attr_hash_id,old.peer_hash_id,old.origin_as,
+            INSERT IGNORE INTO path_attr_log (prefix,prefix_len,labels,path_id,path_attr_hash_id,peer_hash_id,origin_as,timestamp)
+            VALUES (old.prefix,old.prefix_len,old.labels,old.path_id,old.path_attr_hash_id,old.peer_hash_id,old.origin_as,
                     old.timestamp);
 
           END IF;
@@ -1270,7 +1272,7 @@ CREATE VIEW v_routes_history AS
   SELECT
                 rtr.name as RouterName, rtr.ip_address as RouterAddress,
 	        p.name AS PeerName,
-                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,pathlog.labels AS Labels,pathlog.path_id AS path_id,
                 path.origin AS Origin,path.origin_as AS Origin_AS,
                     path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
                 path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
