@@ -134,7 +134,7 @@ public class BaseAttributeQuery extends Query{
                             continue;
                         }
 
-                        String isPeeringAsn = (i2 == 0) ? "1" : "0";
+                        String isPeeringAsn = (i2 == 0 || i2 == 1) ? "1" : "0";
                         values.add("(" + asn + "," + left_asn + "," + right_asn + "," + isPeeringAsn + ")");
 
 

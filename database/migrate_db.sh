@@ -143,6 +143,117 @@ elif [[ $SCHEMA_VERSION = "1.20" ||  $SCHEMA_VERSION = "1.21" ]]; then
 echo "Upgrading from $SCHEMA_VERSION to $CUR_VERSION"
 $MYSQL_CMD <<UPGRADE
 
+alter table path_attrs add column large_community_list varchar(3000) DEFAULT NULL;
+
+drop view IF EXISTS v_routes;
+CREATE  VIEW v_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified, r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits,r.isPrePolicy,r.isAdjRibIn
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+       WHERE r.isWithdrawn = False;
+
+drop view IF EXISTS v_all_routes;
+CREATE  VIEW v_all_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified,r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id);
+
+
+drop view IF EXISTS v_routes_history;
+CREATE VIEW v_routes_history AS
+  SELECT
+                rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	        p.name AS PeerName,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,
+                path.origin AS Origin,path.origin_as AS Origin_AS,
+                    path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
+                path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,
+                p.peer_as AS PeerASN,  p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                pathlog.id,pathlog.timestamp AS LastModified,
+               pathlog.path_attr_hash_id as path_attr_hash_id, pathlog.peer_hash_id, rtr.hash_id as router_hash_id
+        FROM path_attr_log pathlog
+                 STRAIGHT_JOIN path_attrs path
+                                 ON (pathlog.path_attr_hash_id = path.hash_id AND
+                                         pathlog.peer_hash_id = path.peer_hash_id)
+                 STRAIGHT_JOIN bgp_peers p ON (pathlog.peer_hash_id = p.hash_id)
+	         STRAIGHT_JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+                  ORDER BY id Desc;
+
+
+drop view IF EXISTS v_routes_withdraws;
+CREATE VIEW v_routes_withdraws AS
+SELECT  rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	p.name AS PeerName,
+        log.prefix AS Prefix,log.prefix_len AS PrefixLen,
+        path.origin AS Origin,path.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+        path.next_hop AS NH,path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,
+        path.community_list AS Communities,
+        path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+        path.cluster_list AS ClusterList,
+        path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+        p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,log.id AS id,log.timestamp AS LastModified,
+        log.path_attr_hash_id AS path_attr_hash_id,log.peer_hash_id AS peer_hash_id,rtr.hash_id AS router_hash_id
+    FROM withdrawn_log log
+         STRAIGHT_JOIN path_attrs path ON (path.hash_id = log.path_attr_hash_id and path.peer_hash_id = log.peer_hash_id)
+         STRAIGHT_JOIN bgp_peers p ON (log.peer_hash_id = p.hash_id)
+         LEFT JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+    ORDER BY log.timestamp desc;
+
+drop view IF EXISTS v_l3vpn_routes;
+CREATE VIEW v_l3vpn_routes AS
+	select if((length(rtr.name) > 0),rtr.name,rtr.ip_address) AS RouterName,
+	if((length(p.name) > 0),p.name,p.peer_addr) AS PeerName,
+ 	r.rd AS RD,r.prefix AS Prefix,r.prefix_len AS PrefixLen,path.origin AS Origin,
+ 	r.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+ 	path.next_hop AS NH,path.as_path AS AS_Path,
+	path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+	path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+  path.cluster_list AS ClusterList,
+	path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+	r.isIPv4 AS isIPv4,p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,
+	r.timestamp AS LastModified,r.first_added_timestamp AS FirstAddedTimestamp,
+	r.prefix_bin AS prefix_bin,r.path_id AS path_id,r.labels AS labels,r.hash_id AS rib_hash_id,
+	r.path_attr_hash_id AS path_hash_id,r.peer_hash_id AS peer_hash_id,
+	rtr.hash_id AS router_hash_id,r.isWithdrawn AS isWithdrawn,
+	r.prefix_bits AS prefix_bits,r.isPrePolicy AS isPrePolicy,r.isAdjRibIn AS isAdjRibIn
+     from bgp_peers p
+               join l3vpn_rib r on (r.peer_hash_id = p.hash_id)
+	    join path_attrs path on (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+              join routers rtr on (p.router_hash_id = rtr.hash_id)
+      where  r.isWithdrawn = 0;
+
 DROP TABLE IF EXISTS as_path_analysis;
 CREATE TABLE as_path_analysis (
   asn int(10) unsigned NOT NULL,
@@ -174,6 +285,117 @@ elif [[ $SCHEMA_VERSION = "1.19" ]]; then
 
 echo "Upgrading from 1.19 to $CUR_VERSION"
 $MYSQL_CMD <<UPGRADE
+alter table path_attrs add column large_community_list varchar(3000) DEFAULT NULL;
+
+drop view IF EXISTS v_routes;
+CREATE  VIEW v_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified, r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits,r.isPrePolicy,r.isAdjRibIn
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+       WHERE r.isWithdrawn = False;
+
+drop view IF EXISTS v_all_routes;
+CREATE  VIEW v_all_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified,r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id);
+
+
+drop view IF EXISTS v_routes_history;
+CREATE VIEW v_routes_history AS
+  SELECT
+                rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	        p.name AS PeerName,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,
+                path.origin AS Origin,path.origin_as AS Origin_AS,
+                    path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
+                path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,
+                p.peer_as AS PeerASN,  p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                pathlog.id,pathlog.timestamp AS LastModified,
+               pathlog.path_attr_hash_id as path_attr_hash_id, pathlog.peer_hash_id, rtr.hash_id as router_hash_id
+        FROM path_attr_log pathlog
+                 STRAIGHT_JOIN path_attrs path
+                                 ON (pathlog.path_attr_hash_id = path.hash_id AND
+                                         pathlog.peer_hash_id = path.peer_hash_id)
+                 STRAIGHT_JOIN bgp_peers p ON (pathlog.peer_hash_id = p.hash_id)
+	         STRAIGHT_JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+                  ORDER BY id Desc;
+
+
+drop view IF EXISTS v_routes_withdraws;
+CREATE VIEW v_routes_withdraws AS
+SELECT  rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	p.name AS PeerName,
+        log.prefix AS Prefix,log.prefix_len AS PrefixLen,
+        path.origin AS Origin,path.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+        path.next_hop AS NH,path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,
+        path.community_list AS Communities,
+        path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+        path.cluster_list AS ClusterList,
+        path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+        p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,log.id AS id,log.timestamp AS LastModified,
+        log.path_attr_hash_id AS path_attr_hash_id,log.peer_hash_id AS peer_hash_id,rtr.hash_id AS router_hash_id
+    FROM withdrawn_log log
+         STRAIGHT_JOIN path_attrs path ON (path.hash_id = log.path_attr_hash_id and path.peer_hash_id = log.peer_hash_id)
+         STRAIGHT_JOIN bgp_peers p ON (log.peer_hash_id = p.hash_id)
+         LEFT JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+    ORDER BY log.timestamp desc;
+
+drop view IF EXISTS v_l3vpn_routes;
+CREATE VIEW v_l3vpn_routes AS
+	select if((length(rtr.name) > 0),rtr.name,rtr.ip_address) AS RouterName,
+	if((length(p.name) > 0),p.name,p.peer_addr) AS PeerName,
+ 	r.rd AS RD,r.prefix AS Prefix,r.prefix_len AS PrefixLen,path.origin AS Origin,
+ 	r.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+ 	path.next_hop AS NH,path.as_path AS AS_Path,
+	path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+	path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+  path.cluster_list AS ClusterList,
+	path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+	r.isIPv4 AS isIPv4,p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,
+	r.timestamp AS LastModified,r.first_added_timestamp AS FirstAddedTimestamp,
+	r.prefix_bin AS prefix_bin,r.path_id AS path_id,r.labels AS labels,r.hash_id AS rib_hash_id,
+	r.path_attr_hash_id AS path_hash_id,r.peer_hash_id AS peer_hash_id,
+	rtr.hash_id AS router_hash_id,r.isWithdrawn AS isWithdrawn,
+	r.prefix_bits AS prefix_bits,r.isPrePolicy AS isPrePolicy,r.isAdjRibIn AS isAdjRibIn
+     from bgp_peers p
+               join l3vpn_rib r on (r.peer_hash_id = p.hash_id)
+	    join path_attrs path on (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+              join routers rtr on (p.router_hash_id = rtr.hash_id)
+      where  r.isWithdrawn = 0;
+
   DROP trigger IF EXISTS upd_as_path_analysis;
 
 DROP TABLE IF EXISTS as_path_analysis;
@@ -204,6 +426,117 @@ elif [[ $SCHEMA_VERSION = "1.18" ]]; then
 
 echo "Upgrading from 1.18 to $CUR_VERSION"
 $MYSQL_CMD <<UPGRADE
+alter table path_attrs add column large_community_list varchar(3000) DEFAULT NULL;
+
+drop view IF EXISTS v_routes;
+CREATE  VIEW v_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified, r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits,r.isPrePolicy,r.isAdjRibIn
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+       WHERE r.isWithdrawn = False;
+
+drop view IF EXISTS v_all_routes;
+CREATE  VIEW v_all_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified,r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id);
+
+
+drop view IF EXISTS v_routes_history;
+CREATE VIEW v_routes_history AS
+  SELECT
+                rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	        p.name AS PeerName,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,
+                path.origin AS Origin,path.origin_as AS Origin_AS,
+                    path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
+                path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,
+                p.peer_as AS PeerASN,  p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                pathlog.id,pathlog.timestamp AS LastModified,
+               pathlog.path_attr_hash_id as path_attr_hash_id, pathlog.peer_hash_id, rtr.hash_id as router_hash_id
+        FROM path_attr_log pathlog
+                 STRAIGHT_JOIN path_attrs path
+                                 ON (pathlog.path_attr_hash_id = path.hash_id AND
+                                         pathlog.peer_hash_id = path.peer_hash_id)
+                 STRAIGHT_JOIN bgp_peers p ON (pathlog.peer_hash_id = p.hash_id)
+	         STRAIGHT_JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+                  ORDER BY id Desc;
+
+
+drop view IF EXISTS v_routes_withdraws;
+CREATE VIEW v_routes_withdraws AS
+SELECT  rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	p.name AS PeerName,
+        log.prefix AS Prefix,log.prefix_len AS PrefixLen,
+        path.origin AS Origin,path.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+        path.next_hop AS NH,path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,
+        path.community_list AS Communities,
+        path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+        path.cluster_list AS ClusterList,
+        path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+        p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,log.id AS id,log.timestamp AS LastModified,
+        log.path_attr_hash_id AS path_attr_hash_id,log.peer_hash_id AS peer_hash_id,rtr.hash_id AS router_hash_id
+    FROM withdrawn_log log
+         STRAIGHT_JOIN path_attrs path ON (path.hash_id = log.path_attr_hash_id and path.peer_hash_id = log.peer_hash_id)
+         STRAIGHT_JOIN bgp_peers p ON (log.peer_hash_id = p.hash_id)
+         LEFT JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+    ORDER BY log.timestamp desc;
+
+drop view IF EXISTS v_l3vpn_routes;
+CREATE VIEW v_l3vpn_routes AS
+	select if((length(rtr.name) > 0),rtr.name,rtr.ip_address) AS RouterName,
+	if((length(p.name) > 0),p.name,p.peer_addr) AS PeerName,
+ 	r.rd AS RD,r.prefix AS Prefix,r.prefix_len AS PrefixLen,path.origin AS Origin,
+ 	r.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+ 	path.next_hop AS NH,path.as_path AS AS_Path,
+	path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+	path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+  path.cluster_list AS ClusterList,
+	path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+	r.isIPv4 AS isIPv4,p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,
+	r.timestamp AS LastModified,r.first_added_timestamp AS FirstAddedTimestamp,
+	r.prefix_bin AS prefix_bin,r.path_id AS path_id,r.labels AS labels,r.hash_id AS rib_hash_id,
+	r.path_attr_hash_id AS path_hash_id,r.peer_hash_id AS peer_hash_id,
+	rtr.hash_id AS router_hash_id,r.isWithdrawn AS isWithdrawn,
+	r.prefix_bits AS prefix_bits,r.isPrePolicy AS isPrePolicy,r.isAdjRibIn AS isAdjRibIn
+     from bgp_peers p
+               join l3vpn_rib r on (r.peer_hash_id = p.hash_id)
+	    join path_attrs path on (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+              join routers rtr on (p.router_hash_id = rtr.hash_id)
+      where  r.isWithdrawn = 0;
+
 drop event IF EXISTS chg_stats_bypeer;
 CREATE EVENT chg_stats_bypeer
   ON SCHEDULE EVERY 5 MINUTE
@@ -323,6 +656,116 @@ else
 echo "Upgrading from 1.17 to $CUR_VERSION"
 
 $MYSQL_CMD <<UPGRADE
+alter table path_attrs add column large_community_list varchar(3000) DEFAULT NULL;
+
+drop view IF EXISTS v_routes;
+CREATE  VIEW v_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified, r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits,r.isPrePolicy,r.isAdjRibIn
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+       WHERE r.isWithdrawn = False;
+
+drop view IF EXISTS v_all_routes;
+CREATE  VIEW v_all_routes AS
+       SELECT  if (length(rtr.name) > 0, rtr.name, rtr.ip_address) AS RouterName,
+                if(length(p.name) > 0, p.name, p.peer_addr) AS PeerName,
+                r.prefix AS Prefix,r.prefix_len AS PrefixLen,
+                path.origin AS Origin,r.origin_as AS Origin_AS,path.med AS MED,
+                path.local_pref AS LocalPref,path.next_hop AS NH,path.as_path AS AS_Path,
+                path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,
+                path.aggregator AS Aggregator,p.peer_addr AS PeerAddress, p.peer_as AS PeerASN,r.isIPv4 as isIPv4,
+                p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                r.timestamp AS LastModified,r.first_added_timestamp as FirstAddedTimestamp,r.prefix_bin as prefix_bin,
+                r.path_id, r.labels,
+                r.hash_id as rib_hash_id,
+                r.path_attr_hash_id as path_hash_id, r.peer_hash_id, rtr.hash_id as router_hash_id,r.isWithdrawn,
+                r.prefix_bits
+        FROM bgp_peers p JOIN rib r ON (r.peer_hash_id = p.hash_id)
+            JOIN path_attrs path ON (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+            JOIN routers rtr ON (p.router_hash_id = rtr.hash_id);
+
+
+drop view IF EXISTS v_routes_history;
+CREATE VIEW v_routes_history AS
+  SELECT
+                rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	        p.name AS PeerName,
+                pathlog.prefix AS Prefix,pathlog.prefix_len AS PrefixLen,
+                path.origin AS Origin,path.origin_as AS Origin_AS,
+                    path.med AS MED,path.local_pref AS LocalPref,path.next_hop AS NH,
+                path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+                path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+                path.cluster_list AS ClusterList,path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,
+                p.peer_as AS PeerASN,  p.isIPv4 as isPeerIPv4, p.isL3VPNpeer as isPeerVPN,
+                pathlog.id,pathlog.timestamp AS LastModified,
+               pathlog.path_attr_hash_id as path_attr_hash_id, pathlog.peer_hash_id, rtr.hash_id as router_hash_id
+        FROM path_attr_log pathlog
+                 STRAIGHT_JOIN path_attrs path
+                                 ON (pathlog.path_attr_hash_id = path.hash_id AND
+                                         pathlog.peer_hash_id = path.peer_hash_id)
+                 STRAIGHT_JOIN bgp_peers p ON (pathlog.peer_hash_id = p.hash_id)
+	         STRAIGHT_JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+                  ORDER BY id Desc;
+
+
+drop view IF EXISTS v_routes_withdraws;
+CREATE VIEW v_routes_withdraws AS
+SELECT  rtr.name as RouterName, rtr.ip_address as RouterAddress,
+	p.name AS PeerName,
+        log.prefix AS Prefix,log.prefix_len AS PrefixLen,
+        path.origin AS Origin,path.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+        path.next_hop AS NH,path.as_path AS AS_Path,path.as_path_count AS ASPath_Count,
+        path.community_list AS Communities,
+        path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+        path.cluster_list AS ClusterList,
+        path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+        p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,log.id AS id,log.timestamp AS LastModified,
+        log.path_attr_hash_id AS path_attr_hash_id,log.peer_hash_id AS peer_hash_id,rtr.hash_id AS router_hash_id
+    FROM withdrawn_log log
+         STRAIGHT_JOIN path_attrs path ON (path.hash_id = log.path_attr_hash_id and path.peer_hash_id = log.peer_hash_id)
+         STRAIGHT_JOIN bgp_peers p ON (log.peer_hash_id = p.hash_id)
+         LEFT JOIN routers rtr ON (p.router_hash_id = rtr.hash_id)
+    ORDER BY log.timestamp desc;
+
+drop view IF EXISTS v_l3vpn_routes;
+CREATE VIEW v_l3vpn_routes AS
+	select if((length(rtr.name) > 0),rtr.name,rtr.ip_address) AS RouterName,
+	if((length(p.name) > 0),p.name,p.peer_addr) AS PeerName,
+ 	r.rd AS RD,r.prefix AS Prefix,r.prefix_len AS PrefixLen,path.origin AS Origin,
+ 	r.origin_as AS Origin_AS,path.med AS MED,path.local_pref AS LocalPref,
+ 	path.next_hop AS NH,path.as_path AS AS_Path,
+	path.as_path_count AS ASPath_Count,path.community_list AS Communities,
+	path.ext_community_list AS ExtCommunities,path.large_community_list AS LargeCommunities,
+  path.cluster_list AS ClusterList,
+	path.aggregator AS Aggregator,p.peer_addr AS PeerAddress,p.peer_as AS PeerASN,
+	r.isIPv4 AS isIPv4,p.isIPv4 AS isPeerIPv4,p.isL3VPNpeer AS isPeerVPN,
+	r.timestamp AS LastModified,r.first_added_timestamp AS FirstAddedTimestamp,
+	r.prefix_bin AS prefix_bin,r.path_id AS path_id,r.labels AS labels,r.hash_id AS rib_hash_id,
+	r.path_attr_hash_id AS path_hash_id,r.peer_hash_id AS peer_hash_id,
+	rtr.hash_id AS router_hash_id,r.isWithdrawn AS isWithdrawn,
+	r.prefix_bits AS prefix_bits,r.isPrePolicy AS isPrePolicy,r.isAdjRibIn AS isAdjRibIn
+     from bgp_peers p
+               join l3vpn_rib r on (r.peer_hash_id = p.hash_id)
+	    join path_attrs path on (path.hash_id = r.path_attr_hash_id and path.peer_hash_id = r.peer_hash_id)
+              join routers rtr on (p.router_hash_id = rtr.hash_id)
+      where  r.isWithdrawn = 0;
 
 # Fix bgp_ls node issue where nodes were being suppressed
 drop view v_ls_nodes;
