@@ -268,7 +268,6 @@ BEGIN
 
                 END LOOP find_next;
 
-                set nh_metric = 0;
             ELSE
                 set done = TRUE;
             END IF;
